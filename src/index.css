@@ -1,0 +1,117 @@
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-tb-bg:     #F8FAF8;
+  --color-tb-card:   #FFFFFF;
+  --color-tb-border: #E8F5E9;
+  --color-tb-green:  #4CAF50;
+  --color-tb-green-dark: #2E7D32;
+  --color-tb-red:    #C62828;
+  --color-tb-muted:  #888888;
+  --color-tb-text:   #1A1A1A;
+  --color-tb-medium: #555555;
+}
+
+@keyframes pulse-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76,175,80,0.4); }
+  50%       { box-shadow: 0 0 0 12px rgba(76,175,80,0); }
+}
+@keyframes voiceBar1 { 0%,100%{height:8px}  50%{height:20px} }
+@keyframes voiceBar2 { 0%,100%{height:14px} 50%{height:8px}  }
+@keyframes voiceBar3 { 0%,100%{height:10px} 50%{height:22px} }
+@keyframes voiceBar4 { 0%,100%{height:18px} 50%{height:10px} }
+@keyframes voiceBar5 { 0%,100%{height:12px} 50%{height:16px} }
+
+@keyframes xpShimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(250%); }
+}
+@keyframes popIn {
+  0%   { transform: scale(0.5) rotate(-5deg); opacity: 0; }
+  70%  { transform: scale(1.1) rotate(2deg); }
+  100% { transform: scale(1) rotate(0deg); opacity: 1; }
+}
+@keyframes floatUp {
+  0%,100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+@keyframes glowPulse {
+  0%,100% { box-shadow: 0 0 12px rgba(76,175,80,0.2); }
+  50%     { box-shadow: 0 0 28px rgba(76,175,80,0.45); }
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Plus Jakarta Sans', sans-serif;
+  background-color: #F5F9F5;
+  color: #1A1A1A;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#root {
+  width: 100%;
+  min-height: 100svh;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #F5F9F5; }
+::-webkit-scrollbar-thumb { background: #C8E6C9; border-radius: 2px; }
+
+/* Selection */
+::selection { background: #C8E6C9; color: #1B6B1B; }
+
+/* Glow utilities */
+.glow-green { box-shadow: 0 0 24px rgba(76,175,80,0.3); }
+.glow-green-sm { box-shadow: 0 0 12px rgba(76,175,80,0.15); }
+
+/* Glass card — light version */
+.glass-card {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid #E8F5E9;
+}
+
+/* Input focus */
+input:focus {
+  outline: none;
+}
+
+/* Placeholder color — works globally */
+input::placeholder {
+  color: #AAAAAA;
+  opacity: 1;
+}
+
+/* Override Chrome/Safari autofill yellow flash */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active {
+  -webkit-box-shadow: 0 0 0 40px #F5F9F5 inset !important;
+  -webkit-text-fill-color: #1A1A1A !important;
+  caret-color: #1A1A1A;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+/* Password strength bar animation */
+.strength-bar {
+  transition: width 0.4s ease, background-color 0.4s ease;
+}
+
+/* Hide scrollbar on horizontal scroll rows */
+.no-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
