@@ -4,18 +4,19 @@ import { Home, TrendingUp, MessageCircle, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
 import { SECTIONS } from '../data/sections'
+import { useTheme } from '../context/ThemeContext'
 
-// ── Colors ────────────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#F8FAF8',
-  card:      '#FFFFFF',
-  border:    '#E8F5E9',
-  green:     '#4CAF50',
-  greenDark: '#2E7D32',
-  greenBg:   '#E8F5E9',
-  dark:      '#1A1A1A',
-  muted:     '#888888',
-}
+// ── Colors (resolved at runtime from theme) ───────────────────────────────────
+const mkC = (t) => ({
+  bg:        t.bgPrimary,
+  card:      t.bgCard,
+  border:    t.border,
+  green:     t.primary,
+  greenDark: t.primaryDark,
+  greenBg:   t.primaryLight,
+  dark:      t.textPrimary,
+  muted:     t.textMuted,
+})
 
 // ── Bottom nav trophy icon ────────────────────────────────────────────────────
 function TrophyNavIcon({ size = 22, color = '#AAAAAA' }) {
@@ -32,22 +33,24 @@ function TrophyNavIcon({ size = 22, color = '#AAAAAA' }) {
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
-  const color = active ? C.green : '#AAAAAA'
+  const { t } = useTheme()
+  const color = active ? t.primary : t.textMuted
   return (
     <button onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
       <Icon size={22} color={color} strokeWidth={active ? 2.2 : 1.8} />
       <span style={{ color, fontSize: 9, fontWeight: active ? 700 : 500 }}>{label}</span>
-      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.green, marginTop: -1 }} />}
+      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: t.primary, marginTop: -1 }} />}
     </button>
   )
 }
 
 // ── Shimmer skeleton ──────────────────────────────────────────────────────────
 function Shimmer({ w = '100%', h = 14, radius = 6 }) {
+  const { t } = useTheme()
   return (
     <div style={{
       width: w, height: h, borderRadius: radius,
-      background: 'linear-gradient(90deg,#F0F0F0 25%,#E8F5E9 50%,#F0F0F0 75%)',
+      background: `linear-gradient(90deg,${t.borderSubtle} 25%,${t.border} 50%,${t.borderSubtle} 75%)`,
       backgroundSize: '200% 100%',
       animation: 'shimmer 1.4s ease-in-out infinite',
     }} />
@@ -57,6 +60,8 @@ function Shimmer({ w = '100%', h = 14, radius = 6 }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function LearnPage() {
   const navigate = useNavigate()
+  const { t }    = useTheme()
+  const C        = mkC(t)
 
   const [userProgress, setUserProgress] = useState({})
   const [userStats,    setUserStats]    = useState({ totalXP: 0, streak: 0, completedSections: 0 })
@@ -123,10 +128,10 @@ export default function LearnPage() {
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: C.bg, minHeight: '100dvh', maxWidth: 430, margin: '0 auto', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
+    <div style={{ background: t.bgPrimary, minHeight: '100dvh', maxWidth: 430, margin: '0 auto', fontFamily: "'Plus Jakarta Sans', sans-serif", paddingBottom: 80 }}>
 
       {/* ── HEADER ─────────────────────────────────────────────────────────── */}
-      <div style={{ padding: '12px 16px', background: '#fff', borderBottom: '1px solid #EBF5EB', display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+      <div style={{ padding: '12px 16px', background: t.headerBg, borderBottom: `1px solid ${t.headerBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', position: 'sticky', top: 0, zIndex: 20, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
         <span style={{ color: C.dark, fontSize: 16, fontWeight: 800 }}>Learn & Practice</span>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <div style={{ background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 20, padding: '4px 10px', color: '#E65100', fontSize: 10, fontWeight: 700 }}>
@@ -139,7 +144,7 @@ export default function LearnPage() {
       </div>
 
       {/* ── PROGRESS CARD ──────────────────────────────────────────────────── */}
-      <div style={{ margin: '12px 14px', background: '#fff', borderRadius: 16, border: `1px solid ${C.border}`, borderTop: '3px solid #4CAF50', padding: '14px', boxShadow: '0 2px 12px rgba(76,175,80,0.06)' }}>
+      <div style={{ margin: '12px 14px', background: t.bgCard, borderRadius: 16, border: `1px solid ${t.border}`, borderTop: `3px solid ${t.primary}`, padding: '14px', boxShadow: '0 2px 12px rgba(76,175,80,0.06)' }}>
         {isLoading ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <Shimmer h={12} w="60%" />
@@ -163,13 +168,13 @@ export default function LearnPage() {
                 ['XP',     `${userStats.totalXP}`],
                 ['Level',  `${level}`],
               ].map(([label, val]) => (
-                <div key={label} style={{ textAlign: 'center', background: '#F8FAF8', borderRadius: 10, padding: '8px 4px' }}>
+                <div key={label} style={{ textAlign: 'center', background: t.bgPrimary, borderRadius: 10, padding: '8px 4px' }}>
                   <div style={{ color: C.dark, fontSize: 14, fontWeight: 800 }}>{val}</div>
                   <div style={{ color: C.muted, fontSize: 8, marginTop: 1 }}>{label}</div>
                 </div>
               ))}
             </div>
-            <div style={{ height: 5, background: '#F0F0F0', borderRadius: 3, overflow: 'hidden' }}>
+            <div style={{ height: 5, background: t.borderSubtle, borderRadius: 3, overflow: 'hidden' }}>
               <div style={{ height: 5, borderRadius: 3, background: C.green, width: `${Math.min((userStats.totalXP / xpToNextLevel) * 100, 100)}%`, transition: 'width 0.5s ease' }} />
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
@@ -205,7 +210,7 @@ export default function LearnPage() {
       <div style={{ padding: '0 14px' }}>
         {isLoading
           ? [1,2,3,4].map(i => (
-              <div key={i} style={{ background: '#fff', borderRadius: 16, border: '1px solid #F0F0F0', padding: 14, marginBottom: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div key={i} style={{ background: t.bgCard, borderRadius: 16, border: `1px solid ${t.borderSubtle}`, padding: 14, marginBottom: 8, display: 'flex', gap: 12, alignItems: 'center' }}>
                 <Shimmer w={48} h={48} radius={14} />
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
                   <Shimmer h={12} w="70%" />
@@ -228,9 +233,9 @@ export default function LearnPage() {
                   onClick={() => handleSectionClick(section, idx)}
                   style={{
                     display: 'flex', alignItems: 'center', gap: 12, padding: 14,
-                    background: isActive ? '#F8FFF8' : '#fff',
+                    background: isActive ? t.bgHover : t.bgCard,
                     borderRadius: 16,
-                    border: isActive ? '1.5px solid #4CAF50' : '1px solid #F0F0F0',
+                    border: isActive ? `1.5px solid ${t.primary}` : `1px solid ${t.borderSubtle}`,
                     marginBottom: 8,
                     cursor: locked ? 'not-allowed' : 'pointer',
                     opacity: locked ? 0.55 : 1,
@@ -249,7 +254,7 @@ export default function LearnPage() {
                       {idx + 1}. {section.title}
                     </div>
                     <div style={{ color: C.muted, fontSize: 10, marginBottom: 6 }}>{section.description}</div>
-                    <div style={{ height: 3, background: '#F0F0F0', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: 3, background: t.borderSubtle, borderRadius: 2, overflow: 'hidden' }}>
                       <div style={{
                         height: 3, borderRadius: 2,
                         background: isDone ? C.green : '#2196F3',
@@ -263,9 +268,9 @@ export default function LearnPage() {
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5, flexShrink: 0 }}>
                     <span style={{
                       fontSize: 10, fontWeight: 700, padding: '3px 9px', borderRadius: 20,
-                      background: isDone ? C.greenBg : isActive ? '#E3F2FD' : locked ? '#F5F5F5' : '#F0F9F0',
-                      color:      isDone ? C.greenDark : isActive ? '#1565C0' : locked ? C.muted : C.green,
-                      border:     isDone ? '1px solid #C8E6C9' : isActive ? '1px solid #BBDEFB' : '1px solid #E0E0E0',
+                      background: isDone ? t.successBg : isActive ? '#E3F2FD' : locked ? t.borderSubtle : t.primaryLight,
+                      color:      isDone ? t.success : isActive ? '#1565C0' : locked ? t.textMuted : t.primary,
+                      border:     isDone ? `1px solid ${t.successBorder}` : isActive ? '1px solid #BBDEFB' : `1px solid ${t.borderSubtle}`,
                     }}>
                       {isDone ? 'Done ✓' : isActive ? `${progress}%` : locked ? 'Locked' : 'Start'}
                     </span>
@@ -277,12 +282,12 @@ export default function LearnPage() {
       </div>
 
       {/* ── BOTTOM NAV ─────────────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: '#FFFFFF', borderTop: '1px solid #EBF5EB', padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: t.navBg, borderTop: `1px solid ${t.navBorder}`, padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
         <NavItem icon={Home}          label="Home"      onClick={() => navigate('/home')}      />
         <NavItem icon={TrendingUp}    label="Trade"     onClick={() => navigate('/trade')}     />
         <button onClick={() => navigate('/simulator')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
-          <TrophyNavIcon size={22} color="#AAAAAA" />
-          <span style={{ color: '#AAAAAA', fontSize: 9, fontWeight: 500 }}>League</span>
+          <TrophyNavIcon size={22} color={t.textMuted} />
+          <span style={{ color: t.textMuted, fontSize: 9, fontWeight: 500 }}>League</span>
         </button>
         <NavItem icon={MessageCircle} label="AI Mentor" onClick={() => navigate('/ai-mentor')} />
         <NavItem icon={User}          label="Profile"   onClick={() => navigate('/profile')}   />

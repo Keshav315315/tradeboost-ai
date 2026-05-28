@@ -6,23 +6,24 @@ import {
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../context/ThemeContext'
 
 const FINNHUB_KEY = import.meta.env.VITE_FINNHUB_KEY
 
-// ─── Design tokens ────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#F8FAF8',
-  card:      '#FFFFFF',
-  border:    '#E8F5E9',
-  green:     '#4CAF50',
-  greenDark: '#2E7D32',
-  greenBg:   '#E8F5E9',
-  red:       '#C62828',
-  redBg:     '#FFEBEE',
-  muted:     '#888888',
-  medium:    '#555555',
-  dark:      '#1A1A1A',
-}
+// ─── Design tokens (resolved at runtime from theme) ───────────────────────────
+const mkC = (t) => ({
+  bg:        t.bgPrimary,
+  card:      t.bgCard,
+  border:    t.border,
+  green:     t.primary,
+  greenDark: t.primaryDark,
+  greenBg:   t.primaryLight,
+  red:       t.danger,
+  redBg:     t.dangerBg,
+  muted:     t.textMuted,
+  medium:    t.textSecondary,
+  dark:      t.textPrimary,
+})
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 const fmtINR = (n) =>
@@ -109,6 +110,8 @@ const FALLBACK_PRICES = {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function LearnCard({ iconBg, icon, title, subtitle, progress, onClick }) {
+  const { t } = useTheme()
+  const C = mkC(t)
   return (
     <div
       onClick={onClick}
@@ -129,7 +132,7 @@ function LearnCard({ iconBg, icon, title, subtitle, progress, onClick }) {
       </div>
       <p style={{ color: C.dark, fontSize: 11, fontWeight: 700, marginBottom: 3, lineHeight: 1.35 }}>{title}</p>
       <p style={{ color: C.muted, fontSize: 9, marginBottom: 8 }}>{subtitle}</p>
-      <div style={{ height: 3, background: '#F0F0F0', borderRadius: 2, overflow: 'hidden' }}>
+      <div style={{ height: 3, background: t.borderSubtle, borderRadius: 2, overflow: 'hidden' }}>
         <div style={{ height: '100%', width: `${progress}%`, background: C.green, borderRadius: 2 }} />
       </div>
     </div>
@@ -138,12 +141,13 @@ function LearnCard({ iconBg, icon, title, subtitle, progress, onClick }) {
 
 
 function NavItem({ icon: Icon, label, active, onClick }) {
-  const color = active ? C.green : '#AAAAAA'
+  const { t } = useTheme()
+  const color = active ? t.primary : t.textMuted
   return (
     <button onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
       <Icon size={22} color={color} strokeWidth={active ? 2.2 : 1.8} />
       <span style={{ color, fontSize: 9, fontWeight: active ? 700 : 500 }}>{label}</span>
-      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.green, marginTop: -1 }} />}
+      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: t.primary, marginTop: -1 }} />}
     </button>
   )
 }
@@ -162,34 +166,36 @@ function TrophyIcon({ size = 22, color = '#AAAAAA' }) {
 }
 
 function ActionBtn({ emoji, label, sub, onClick }) {
+  const { t } = useTheme()
   return (
-    <button onClick={onClick} style={{ flex: 1, background: '#F8FFF8', border: `1px solid ${C.border}`, borderRadius: 10, padding: '8px 4px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s ease' }}>
+    <button onClick={onClick} style={{ flex: 1, background: t.bgHover, border: `1px solid ${t.border}`, borderRadius: 10, padding: '8px 4px', textAlign: 'center', cursor: 'pointer', transition: 'all 0.2s ease' }}>
       <p style={{ fontSize: 16, marginBottom: 2 }}>{emoji}</p>
-      <p style={{ color: C.dark, fontSize: 10, fontWeight: 600 }}>{label}</p>
-      <p style={{ color: C.muted, fontSize: 9 }}>{sub}</p>
+      <p style={{ color: t.textPrimary, fontSize: 10, fontWeight: 600 }}>{label}</p>
+      <p style={{ color: t.textMuted, fontSize: 9 }}>{sub}</p>
     </button>
   )
 }
 
 // ─── Shimmer skeleton ─────────────────────────────────────────────────────────
 function StockSkeleton() {
+  const { t } = useTheme()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
       {[1, 2, 3].map(i => (
-        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: i < 3 ? '1px solid #F5F5F5' : 'none', opacity: 1 - i * 0.2 }}>
-          <div style={{ width: 36, height: 36, borderRadius: 10, background: '#F0F0F0', flexShrink: 0 }} />
+        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 0', borderBottom: i < 3 ? `1px solid ${t.borderSubtle}` : 'none', opacity: 1 - i * 0.2 }}>
+          <div style={{ width: 36, height: 36, borderRadius: 10, background: t.borderSubtle, flexShrink: 0 }} />
           <div style={{ flex: 1 }}>
-            <div style={{ width: 100, height: 11, background: '#F0F0F0', borderRadius: 4, marginBottom: 5 }} />
-            <div style={{ width: 60, height: 9, background: '#F0F0F0', borderRadius: 4 }} />
+            <div style={{ width: 100, height: 11, background: t.borderSubtle, borderRadius: 4, marginBottom: 5 }} />
+            <div style={{ width: 60, height: 9, background: t.borderSubtle, borderRadius: 4 }} />
           </div>
           <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 18, marginRight: 8 }}>
             {[0.4, 0.6, 0.5, 0.8, 0.7, 0.9, 1].map((h, j) => (
-              <div key={j} style={{ width: 3, height: `${h * 18}px`, borderRadius: 1, background: '#F0F0F0' }} />
+              <div key={j} style={{ width: 3, height: `${h * 18}px`, borderRadius: 1, background: t.borderSubtle }} />
             ))}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ width: 55, height: 12, background: '#F0F0F0', borderRadius: 4, marginBottom: 4 }} />
-            <div style={{ width: 40, height: 10, background: '#F0F0F0', borderRadius: 4 }} />
+            <div style={{ width: 55, height: 12, background: t.borderSubtle, borderRadius: 4, marginBottom: 4 }} />
+            <div style={{ width: 40, height: 10, background: t.borderSubtle, borderRadius: 4 }} />
           </div>
         </div>
       ))}
@@ -214,6 +220,8 @@ const TABS = [
 // ─── Main component ───────────────────────────────────────────────────────────
 export default function HomePage() {
   const navigate = useNavigate()
+  const { t } = useTheme()
+  const C = mkC(t)
 
   // Portfolio state
   const [userName,            setUserName]            = useState('Trader')
@@ -234,6 +242,9 @@ export default function HomePage() {
   const [news,          setNews]          = useState([])
   const [isLoadingNews, setIsLoadingNews] = useState(false)
   const [showAllNews,   setShowAllNews]   = useState(false)
+
+  // Intraday summary
+  const [intradaySummary, setIntradaySummary] = useState(null)
 
   // ── Fetch live prices via Finnhub → fallback ────────────────────────────────
   const fetchStockPrices = async (symbols) => {
@@ -434,6 +445,18 @@ export default function HomePage() {
       const meta = user.user_metadata
       if (meta?.full_name) setUserName(meta.full_name.split(' ')[0])
     }
+
+    // Intraday summary for today
+    const today = new Date().toISOString().split('T')[0]
+    const { data: ipos } = await supabase
+      .from('intraday_positions').select('profit_loss, status, quantity, buy_price')
+      .eq('user_id', user.id).gte('created_at', today)
+    if (ipos?.length > 0) {
+      const open       = ipos.filter(p => p.status === 'open')
+      const closed     = ipos.filter(p => p.status !== 'open')
+      const netPnl     = closed.reduce((sum, p) => sum + (p.profit_loss || 0), 0)
+      setIntradaySummary({ total: ipos.length, open: open.length, squaredOff: closed.length, netPnl })
+    }
   }
 
   // ── Derived ──────────────────────────────────────────────────────────────────
@@ -445,25 +468,25 @@ export default function HomePage() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: C.bg, minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ background: t.bgPrimary, minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 430, flex: 1, display: 'flex', flexDirection: 'column', overflowX: 'hidden', paddingBottom: 70 }}>
 
         {/* ── S1: HEADER ─────────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 14px', background: '#FFFFFF', borderBottom: '1px solid #EBF5EB' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 16px 14px', background: t.headerBg, borderBottom: `1px solid ${t.headerBorder}` }}>
           <div>
-            <p style={{ color: '#1B6B1B', fontSize: 18, fontWeight: 800, lineHeight: 1, marginBottom: 3, letterSpacing: '-0.3px' }}>TradeBoost.AI</p>
+            <p style={{ color: t.primaryDark, fontSize: 18, fontWeight: 800, lineHeight: 1, marginBottom: 3, letterSpacing: '-0.3px' }}>TradeBoost.AI</p>
             <p style={{ color: C.muted, fontSize: 12, marginBottom: 0 }}>
               Good morning 👋 <span style={{ color: C.dark, fontWeight: 700 }}>{userName}</span>
             </p>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <div style={{ position: 'relative' }}>
-              <button style={{ width: 34, height: 34, borderRadius: '50%', background: '#F0F9F0', border: '1px solid #C8E6C9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+              <button style={{ width: 34, height: 34, borderRadius: '50%', background: t.primaryLight, border: `1px solid ${t.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
                 <Bell size={16} color={C.green} strokeWidth={1.8} />
               </button>
-              <div style={{ position: 'absolute', top: 5, right: 5, width: 7, height: 7, borderRadius: '50%', background: C.red, border: '1.5px solid #FFFFFF' }} />
+              <div style={{ position: 'absolute', top: 5, right: 5, width: 7, height: 7, borderRadius: '50%', background: C.red, border: `1.5px solid ${t.bgCard}` }} />
             </div>
-            <div onClick={() => navigate('/profile')} title="My Profile" style={{ width: 34, height: 34, borderRadius: '50%', background: C.green, border: '2px solid #C8E6C9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
+            <div onClick={() => navigate('/profile')} title="My Profile" style={{ width: 34, height: 34, borderRadius: '50%', background: C.green, border: `2px solid ${t.primaryBorder}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff', fontSize: 13, fontWeight: 800, flexShrink: 0 }}>
               {userName?.charAt(0)?.toUpperCase() || 'U'}
             </div>
           </div>
@@ -472,12 +495,12 @@ export default function HomePage() {
         {/* ── S2: VIRTUAL PORTFOLIO CARD ─────────────────────────────────────── */}
         <div
           onClick={() => navigate('/portfolio')}
-          style={{ margin: '12px 16px 14px', background: '#FFFFFF', borderRadius: 20, border: `1px solid ${C.border}`, borderTop: '3px solid #4CAF50', padding: 18, cursor: 'pointer', boxShadow: '0 2px 12px rgba(76,175,80,0.08)', transition: 'all 0.2s ease' }}
+          style={{ margin: '12px 16px 14px', background: t.bgCard, borderRadius: 20, border: `1px solid ${t.border}`, borderTop: `3px solid ${t.primary}`, padding: 18, cursor: 'pointer', boxShadow: '0 2px 12px rgba(76,175,80,0.08)', transition: 'all 0.2s ease' }}
         >
           <p style={{ color: C.muted, fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600, marginBottom: 6 }}>Virtual Portfolio</p>
           <p style={{ color: C.dark, fontSize: 28, fontWeight: 700, lineHeight: 1, marginBottom: 10 }}>{fmtINR(totalPortfolioValue)}</p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-            <span style={{ background: portfolioGain >= 0 ? C.greenBg : C.redBg, color: portfolioGain >= 0 ? C.greenDark : C.red, border: `1px solid ${portfolioGain >= 0 ? '#C8E6C9' : '#FFCDD2'}`, borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '2px 9px' }}>
+            <span style={{ background: portfolioGain >= 0 ? t.successBg : t.dangerBg, color: portfolioGain >= 0 ? t.success : t.danger, border: `1px solid ${portfolioGain >= 0 ? t.successBorder : t.dangerBorder}`, borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '2px 9px' }}>
               {portfolioGain >= 0 ? '+' : ''}{fmtINR(Math.abs(portfolioGain))}
             </span>
             <span style={{ color: C.muted, fontSize: 11 }}>
@@ -491,6 +514,29 @@ export default function HomePage() {
             <ActionBtn emoji="📊" label="Portfolio" sub="P&L"      onClick={e => { e.stopPropagation(); navigate('/portfolio') }} />
           </div>
         </div>
+
+        {/* ── INTRADAY SUMMARY CARD ──────────────────────────────────────────── */}
+        {intradaySummary && (
+          <div
+            onClick={() => navigate('/trade')}
+            style={{ margin: '0 14px 14px', background: '#FFF3E0', border: '1px solid #FFB74D', borderLeft: '3px solid #E65100', borderRadius: 14, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+          >
+            <span style={{ fontSize: 22, flexShrink: 0 }}>⚡</span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <p style={{ color: '#E65100', fontSize: 12, fontWeight: 700, marginBottom: 2 }}>Today's Intraday</p>
+              <p style={{ color: '#BF360C', fontSize: 10 }}>
+                {intradaySummary.open > 0 ? `${intradaySummary.open} open · ` : ''}
+                {intradaySummary.squaredOff > 0 ? `${intradaySummary.squaredOff} squared off` : 'No closed positions yet'}
+              </p>
+            </div>
+            <div style={{ textAlign: 'right', flexShrink: 0 }}>
+              <p style={{ fontSize: 15, fontWeight: 800, color: intradaySummary.netPnl >= 0 ? '#2E7D32' : '#C62828' }}>
+                {intradaySummary.netPnl >= 0 ? '+' : ''}{fmtINR(intradaySummary.netPnl)}
+              </p>
+              <p style={{ color: '#E65100', fontSize: 9, fontWeight: 600 }}>Intraday P&L</p>
+            </div>
+          </div>
+        )}
 
         {/* ── S3: EDUCATION CARDS ────────────────────────────────────────────── */}
         <div style={{ marginBottom: 16 }}>
@@ -507,7 +553,7 @@ export default function HomePage() {
 
         {/* ── S4: STOCK LIST + TABS ──────────────────────────────────────────── */}
         <div id="stock-tabs-section" style={{ marginBottom: 16 }}>
-          <div style={{ height: 1, background: '#F0F0F0', margin: '0 16px 12px' }} />
+          <div style={{ height: 1, background: t.borderSubtle, margin: '0 16px 12px' }} />
 
           {/* Tab pills */}
           <div style={{ display: 'flex', gap: 6, padding: '0 16px', marginBottom: 12 }}>
@@ -539,7 +585,7 @@ export default function HomePage() {
             {isLoading ? (
               <StockSkeleton />
             ) : currentStocks.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '28px 20px', background: '#F8FFF8', borderRadius: 14, border: '1px dashed #C8E6C9' }}>
+              <div style={{ textAlign: 'center', padding: '28px 20px', background: t.bgHover, borderRadius: 14, border: `1px dashed ${t.primaryBorder}` }}>
                 {activeTab === 'watchlist' ? (
                   <>
                     <div style={{ fontSize: 28, marginBottom: 8 }}>⭐</div>
@@ -568,11 +614,11 @@ export default function HomePage() {
                   <div
                     key={stock.symbol}
                     onClick={() => navigate('/trade', { state: { symbol: stock.symbol, description: stock.description } })}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: isLast ? 'none' : '1px solid #F5F5F5', cursor: 'pointer' }}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '11px 0', borderBottom: isLast ? 'none' : `1px solid ${t.borderSubtle}`, cursor: 'pointer' }}
                   >
                     {/* Left: logo + name */}
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1, minWidth: 0 }}>
-                      <div style={{ width: 36, height: 36, borderRadius: 10, background: isUp ? '#E8F5E9' : '#FFEBEE', display: 'flex', alignItems: 'center', justifyContent: 'center', color: isUp ? C.greenDark : C.red, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: 10, background: isUp ? t.successBg : t.dangerBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isUp ? t.success : t.danger, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
                         {initials}
                       </div>
                       <div style={{ minWidth: 0 }}>
@@ -587,7 +633,7 @@ export default function HomePage() {
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 18 }}>
                         {[0.4, 0.6, 0.5, 0.8, 0.7, 0.9, 1.0].map((h, j) => (
-                          <div key={j} style={{ width: 3, height: `${h * 18}px`, borderRadius: 1, background: isUp ? C.green : '#F44336', opacity: 0.4 + j * 0.08 }} />
+                          <div key={j} style={{ width: 3, height: `${h * 18}px`, borderRadius: 1, background: isUp ? t.success : t.danger, opacity: 0.4 + j * 0.08 }} />
                         ))}
                       </div>
 
@@ -595,7 +641,7 @@ export default function HomePage() {
                         <p style={{ color: C.dark, fontSize: 13, fontWeight: 700 }}>
                           ₹{stock.price?.toLocaleString('en-IN', { maximumFractionDigits: 1 })}
                         </p>
-                        <p style={{ color: isUp ? C.greenDark : C.red, fontSize: 10, fontWeight: 700 }}>
+                        <p style={{ color: isUp ? t.success : t.danger, fontSize: 10, fontWeight: 700 }}>
                           {isUp ? '▲' : '▼'} {Math.abs(stock.changePct ?? 0).toFixed(2)}%
                         </p>
                       </div>
@@ -603,7 +649,7 @@ export default function HomePage() {
                       {activeTab === 'watchlist' && (
                         <button
                           onClick={e => { e.stopPropagation(); removeFromWatchlist(stock.symbol) }}
-                          style={{ background: '#FFEBEE', border: '1px solid #FFCDD2', borderRadius: 6, padding: '3px 7px', color: C.red, fontSize: 11, cursor: 'pointer', flexShrink: 0 }}
+                          style={{ background: t.dangerBg, border: `1px solid ${t.dangerBorder}`, borderRadius: 6, padding: '3px 7px', color: t.danger, fontSize: 11, cursor: 'pointer', flexShrink: 0 }}
                         >
                           ✕
                         </button>
@@ -618,7 +664,7 @@ export default function HomePage() {
             {!isLoading && currentStocks.length > 0 && (
               <button
                 onClick={() => navigate('/trade')}
-                style={{ width: '100%', marginTop: 10, padding: '9px', background: '#F0F9F0', border: '1px solid #C8E6C9', borderRadius: 10, color: C.greenDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                style={{ width: '100%', marginTop: 10, padding: '9px', background: t.primaryLight, border: `1px solid ${t.primaryBorder}`, borderRadius: 10, color: t.primaryDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
               >
                 View all stocks on Trade page →
               </button>
@@ -628,7 +674,7 @@ export default function HomePage() {
 
         {/* ── S5: NEWS ───────────────────────────────────────────────────────── */}
         <div style={{ marginBottom: 16 }}>
-          <div style={{ height: 1, background: '#F0F0F0', margin: '0 16px 12px' }} />
+          <div style={{ height: 1, background: t.borderSubtle, margin: '0 16px 12px' }} />
 
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 16px', marginBottom: 10 }}>
             <p style={{ color: C.dark, fontSize: 14, fontWeight: 700 }}>Today's Market News</p>
@@ -644,7 +690,7 @@ export default function HomePage() {
           <div style={{ padding: '0 16px' }}>
             {isLoadingNews && news.length === 0 ? (
               [1, 2, 3].map(i => (
-                <div key={i} style={{ height: 70, background: '#F0F9F0', borderRadius: 12, marginBottom: 8, opacity: 1 - i * 0.25 }} />
+                <div key={i} style={{ height: 70, background: t.primaryLight, borderRadius: 12, marginBottom: 8, opacity: 1 - i * 0.25 }} />
               ))
             ) : (
               <>
@@ -655,12 +701,12 @@ export default function HomePage() {
                     <div
                       key={item.id ?? idx}
                       onClick={() => item.url && window.open(item.url, '_blank')}
-                      style={{ background: '#FFFFFF', borderRadius: 12, border: '1px solid #F0F0F0', padding: '11px 12px', marginBottom: 8, cursor: item.url ? 'pointer' : 'default', transition: 'border-color 0.15s' }}
-                      onMouseEnter={e => { if (item.url) e.currentTarget.style.borderColor = '#C8E6C9' }}
-                      onMouseLeave={e => { e.currentTarget.style.borderColor = '#F0F0F0' }}
+                      style={{ background: t.bgCard, borderRadius: 12, border: `1px solid ${t.borderSubtle}`, padding: '11px 12px', marginBottom: 8, cursor: item.url ? 'pointer' : 'default', transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => { if (item.url) e.currentTarget.style.borderColor = t.primaryBorder }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = t.borderSubtle }}
                     >
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
-                        <span style={{ flexShrink: 0, marginTop: 2, background: isBull ? '#E8F5E9' : isBear ? '#FFEBEE' : '#E3F2FD', color: isBull ? '#2E7D32' : isBear ? C.red : '#1565C0', border: `1px solid ${isBull ? '#C8E6C9' : isBear ? '#FFCDD2' : '#BBDEFB'}`, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
+                        <span style={{ flexShrink: 0, marginTop: 2, background: isBull ? t.successBg : isBear ? t.dangerBg : '#E3F2FD', color: isBull ? t.success : isBear ? t.danger : '#1565C0', border: `1px solid ${isBull ? t.successBorder : isBear ? t.dangerBorder : '#BBDEFB'}`, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 20, whiteSpace: 'nowrap' }}>
                           {isBull ? '📈 Bullish' : isBear ? '📉 Bearish' : '📊 Update'}
                         </span>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -669,11 +715,11 @@ export default function HomePage() {
                           </p>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                             <span style={{ color: C.muted, fontSize: 10 }}>{item.source}</span>
-                            <span style={{ color: '#CCC', fontSize: 10 }}>·</span>
+                            <span style={{ color: t.textMuted, fontSize: 10 }}>·</span>
                             <span style={{ color: C.muted, fontSize: 10 }}>{getTimeAgo(item.datetime)}</span>
                             {item.url && (
                               <>
-                                <span style={{ color: '#CCC', fontSize: 10 }}>·</span>
+                                <span style={{ color: t.textMuted, fontSize: 10 }}>·</span>
                                 <span style={{ color: C.green, fontSize: 10, fontWeight: 600 }}>Read →</span>
                               </>
                             )}
@@ -687,7 +733,7 @@ export default function HomePage() {
                 {news.length > 3 && (
                   <button
                     onClick={() => setShowAllNews(v => !v)}
-                    style={{ width: '100%', background: '#F0F9F0', border: '1px solid #C8E6C9', borderRadius: 10, padding: '9px', color: C.greenDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                    style={{ width: '100%', background: t.primaryLight, border: `1px solid ${t.primaryBorder}`, borderRadius: 10, padding: '9px', color: t.primaryDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
                   >
                     {showAllNews ? '▲ Show Less' : `▼ View ${news.length - 3} More News`}
                   </button>
@@ -699,7 +745,7 @@ export default function HomePage() {
 
         {/* ── S6: AI MENTOR BANNER ───────────────────────────────────────────── */}
         <div
-          style={{ margin: '0 16px 14px', background: '#F0FBF0', border: '1px solid #C8E6C9', borderRadius: 16, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all 0.2s ease' }}
+          style={{ margin: '0 16px 14px', background: t.primaryLight, border: `1px solid ${t.primaryBorder}`, borderRadius: 16, padding: '12px 14px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', transition: 'all 0.2s ease' }}
           onClick={() => navigate('/ai-mentor')}
           role="button" tabIndex={0}
           onKeyDown={e => e.key === 'Enter' && navigate('/ai-mentor')}
@@ -708,8 +754,8 @@ export default function HomePage() {
             🤖
           </div>
           <div style={{ flex: 1 }}>
-            <p style={{ color: '#1B6B1B', fontSize: 12, fontWeight: 700, marginBottom: 3 }}>Ask AI Mentor</p>
-            <p style={{ color: C.green, fontSize: 10 }}>Ask anything about stocks & market</p>
+            <p style={{ color: t.primaryDark, fontSize: 12, fontWeight: 700, marginBottom: 3 }}>Ask AI Mentor</p>
+            <p style={{ color: t.primary, fontSize: 10 }}>Ask anything about stocks & market</p>
           </div>
           <ChevronRight size={18} color={C.green} style={{ marginLeft: 'auto', flexShrink: 0 }} />
         </div>
@@ -717,12 +763,12 @@ export default function HomePage() {
       </div>
 
       {/* ── S7: BOTTOM NAVIGATION ────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: '#FFFFFF', borderTop: '1px solid #EBF5EB', padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: t.navBg, borderTop: `1px solid ${t.navBorder}`, padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
         <NavItem icon={Home}          label="Home"      active onClick={() => navigate('/home')}       />
         <NavItem icon={TrendingUp}    label="Trade"            onClick={() => navigate('/trade')}       />
         <button onClick={() => navigate('/simulator')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
-          <TrophyIcon size={22} color="#AAAAAA" />
-          <span style={{ color: '#AAAAAA', fontSize: 9, fontWeight: 500 }}>League</span>
+          <TrophyIcon size={22} color={t.textMuted} />
+          <span style={{ color: t.textMuted, fontSize: 9, fontWeight: 500 }}>League</span>
         </button>
         <NavItem icon={MessageCircle} label="AI Mentor"        onClick={() => navigate('/ai-mentor')}  />
         <NavItem icon={User}          label="Profile"          onClick={() => navigate('/profile')}    />

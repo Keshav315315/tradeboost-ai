@@ -10,22 +10,23 @@ import {
 } from 'recharts'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../context/ThemeContext'
 
-// ── Design tokens ──────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#F8FAF8',
-  card:      '#FFFFFF',
-  border:    '#E8F5E9',
-  green:     '#4CAF50',
-  greenDark: '#2E7D32',
-  greenBg:   '#E8F5E9',
-  red:       '#E53935',
-  redDark:   '#C62828',
-  redBg:     '#FFEBEE',
-  muted:     '#888888',
-  medium:    '#555555',
-  dark:      '#1A1A1A',
-}
+// ── Design tokens (resolved at runtime from theme) ────────────────────────────
+const mkC = (t) => ({
+  bg:        t.bgPrimary,
+  card:      t.bgCard,
+  border:    t.border,
+  green:     t.primary,
+  greenDark: t.primaryDark,
+  greenBg:   t.primaryLight,
+  red:       t.danger,
+  redDark:   t.danger,
+  redBg:     t.dangerBg,
+  muted:     t.textMuted,
+  medium:    t.textSecondary,
+  dark:      t.textPrimary,
+})
 
 const INITIAL_CAPITAL = 100000
 const CHART_COLORS    = ['#4CAF50', '#2196F3', '#FF5722', '#FF9800', '#9C27B0', '#00BCD4']
@@ -73,10 +74,11 @@ const generateHistory = (period, currentValue) => {
 
 // ── Shimmer ────────────────────────────────────────────────────────────────────
 function Shimmer({ w = '100%', h = 12, radius = 6 }) {
+  const { t } = useTheme()
   return (
     <div style={{
       width: w, height: h, borderRadius: radius,
-      background: 'linear-gradient(90deg,#F0F0F0 25%,#E8F5E9 50%,#F0F0F0 75%)',
+      background: `linear-gradient(90deg,${t.borderSubtle} 25%,${t.border} 50%,${t.borderSubtle} 75%)`,
       backgroundSize: '200% 100%',
       animation: 'shimmer 1.4s ease-in-out infinite',
     }} />
@@ -85,12 +87,13 @@ function Shimmer({ w = '100%', h = 12, radius = 6 }) {
 
 // ── NavItem ────────────────────────────────────────────────────────────────────
 function NavItem({ icon: Icon, label, active, onClick }) {
-  const color = active ? C.green : '#AAAAAA'
+  const { t } = useTheme()
+  const color = active ? t.primary : t.textMuted
   return (
     <button onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
       <Icon size={22} color={color} strokeWidth={active ? 2.2 : 1.8} />
       <span style={{ color, fontSize: 9, fontWeight: active ? 700 : 500 }}>{label}</span>
-      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.green, marginTop: -1 }} />}
+      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: t.primary, marginTop: -1 }} />}
     </button>
   )
 }
@@ -111,6 +114,8 @@ function TrophyIcon({ size = 22, color = '#AAAAAA' }) {
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PortfolioPage() {
   const navigate   = useNavigate()
+  const { t }      = useTheme()
+  const C          = mkC(t)
   const periodRef  = useRef('1W')
 
   const [balance,             setBalance]             = useState(0)
@@ -128,6 +133,8 @@ export default function PortfolioPage() {
   const [aiReview,            setAiReview]            = useState(null)
   const [isLoadingReview,     setIsLoadingReview]     = useState(false)
   const [showReview,          setShowReview]          = useState(false)
+  const [intradayPositions,   setIntradayPositions]   = useState([])
+  const [activeTab,           setActiveTab]           = useState('holdings')
 
   useEffect(() => {
     if (document.getElementById('shimmer-style')) return
@@ -175,6 +182,16 @@ export default function PortfolioPage() {
           .eq('trade_type', 'SELL').gte('created_at', todayStart.toISOString()),
       ])
       setTrades(tradeRes.data ?? [])
+
+      // Intraday positions for today
+      const todayStr = new Date().toISOString().split('T')[0]
+      const { data: iPosList } = await supabase
+        .from('intraday_positions')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('created_at', todayStr)
+        .order('created_at', { ascending: false })
+      setIntradayPositions(iPosList ?? [])
 
       const todayPnL = (todayRes.data ?? []).reduce((s, t) => s + (t.profit_loss ?? 0), 0)
       setTodaysPnL(Math.round(todayPnL))
@@ -361,6 +378,10 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
     color:  CHART_COLORS[i % CHART_COLORS.length],
   }))
 
+  const intradayOpen    = intradayPositions.filter(p => p.status === 'open')
+  const intradayClosed  = intradayPositions.filter(p => p.status !== 'open')
+  const intradayNetPnl  = intradayClosed.reduce((sum, p) => sum + (p.profit_loss ?? 0), 0)
+
   const chartStart     = chartData[0]?.value ?? 0
   const chartCurrent   = chartData[chartData.length - 1]?.value ?? 0
   const chartChange    = chartCurrent - chartStart
@@ -368,12 +389,12 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
 
   // ─────────────────────────────────────────────────────────────────────────────
   return (
-    <div style={{ background: C.bg, minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+    <div style={{ background: t.bgPrimary, minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
       <div style={{ width: '100%', maxWidth: 430, flex: 1, display: 'flex', flexDirection: 'column', paddingBottom: 70 }}>
 
         {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #EBF5EB', position: 'sticky', top: 0, zIndex: 20, background: '#FFFFFF', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
-          <button onClick={() => navigate('/home')} style={{ background: '#F5F9F5', border: '1px solid #E8F5E9', borderRadius: 10, padding: '5px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${t.headerBorder}`, position: 'sticky', top: 0, zIndex: 20, background: t.headerBg, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+          <button onClick={() => navigate('/home')} style={{ background: t.bgInput, border: `1px solid ${t.border}`, borderRadius: 10, padding: '5px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
             <ChevronLeft size={16} color={C.dark} />
           </button>
           <p style={{ position: 'absolute', left: '50%', transform: 'translateX(-50%)', color: C.dark, fontSize: 15, fontWeight: 700, pointerEvents: 'none' }}>
@@ -384,18 +405,18 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
               onClick={handleRefresh}
               disabled={refreshing || isLoading}
               title="Refresh live prices"
-              style={{ width: 28, height: 28, borderRadius: '50%', background: refreshing ? '#E8F5E9' : '#F5F9F5', border: '1px solid #E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (refreshing || isLoading) ? 'not-allowed' : 'pointer', opacity: (refreshing || isLoading) ? 0.5 : 1 }}
+              style={{ width: 28, height: 28, borderRadius: '50%', background: refreshing ? t.primaryLight : t.bgInput, border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: (refreshing || isLoading) ? 'not-allowed' : 'pointer', opacity: (refreshing || isLoading) ? 0.5 : 1 }}
             >
               <RefreshCw size={13} color={C.muted} style={{ animation: refreshing ? 'spin 0.8s linear infinite' : 'none' }} />
             </button>
-            <button style={{ width: 28, height: 28, borderRadius: '50%', background: '#F5F9F5', border: '1px solid #E8F5E9', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
+            <button style={{ width: 28, height: 28, borderRadius: '50%', background: t.bgInput, border: `1px solid ${t.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
               <MoreHorizontal size={16} color={C.muted} />
             </button>
           </div>
         </div>
 
         {/* ── SUMMARY CARD ────────────────────────────────────────────────────── */}
-        <div style={{ margin: '12px 12px 0', background: '#FFFFFF', border: `1px solid ${C.border}`, borderTop: '4px solid #4CAF50', borderRadius: 18, padding: 16, boxShadow: '0 2px 12px rgba(76,175,80,0.06)' }}>
+        <div style={{ margin: '12px 12px 0', background: t.bgCard, border: `1px solid ${t.border}`, borderTop: `4px solid ${t.primary}`, borderRadius: 18, padding: 16, boxShadow: '0 2px 12px rgba(76,175,80,0.06)' }}>
           {isLoading ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <Shimmer w={130} h={10} />
@@ -419,7 +440,7 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
               </p>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16 }}>
-                <span style={{ background: isUp ? C.greenBg : C.redBg, color: isUp ? C.greenDark : C.redDark, border: `1px solid ${isUp ? '#C8E6C9' : '#FFCDD2'}`, borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '3px 10px' }}>
+                <span style={{ background: isUp ? t.successBg : t.dangerBg, color: isUp ? t.success : t.danger, border: `1px solid ${isUp ? t.successBorder : t.dangerBorder}`, borderRadius: 20, fontSize: 11, fontWeight: 700, padding: '3px 10px' }}>
                   {isUp ? '+' : ''}₹{Math.abs(totalGain).toLocaleString('en-IN')}
                 </span>
                 <span style={{ color: C.muted, fontSize: 11 }}>
@@ -432,9 +453,9 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
                 {[
                   { label: 'Cash Left', value: `₹${balance.toLocaleString('en-IN')}`,                                                                     color: C.dark },
                   { label: 'In Stocks', value: `₹${totalInvested.toLocaleString('en-IN')}`,                                                               color: C.dark },
-                  { label: "Today's P&L", value: `${todaysPnL >= 0 ? '+' : ''}₹${Math.abs(todaysPnL).toLocaleString('en-IN')}`,                           color: todaysPnL >= 0 ? C.greenDark : C.redDark },
+                  { label: "Today's P&L", value: `${todaysPnL >= 0 ? '+' : ''}₹${Math.abs(todaysPnL).toLocaleString('en-IN')}`,                           color: todaysPnL >= 0 ? t.success : t.danger },
                 ].map(stat => (
-                  <div key={stat.label} style={{ background: '#F8FFF8', borderRadius: 10, padding: '10px 8px', textAlign: 'center', border: '1px solid #E8F5E9' }}>
+                  <div key={stat.label} style={{ background: t.bgHover, borderRadius: 10, padding: '10px 8px', textAlign: 'center', border: `1px solid ${t.border}` }}>
                     <p style={{ color: C.muted, fontSize: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 4 }}>{stat.label}</p>
                     <p style={{ color: stat.color, fontSize: 12, fontWeight: 800 }}>{stat.value}</p>
                   </div>
@@ -442,7 +463,7 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
               </div>
 
               {/* Initial capital footer */}
-              <div style={{ marginTop: 12, padding: '8px 12px', background: '#F0F9F0', borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ marginTop: 12, padding: '8px 12px', background: t.primaryLight, borderRadius: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ color: C.muted, fontSize: 10 }}>Initial Capital</span>
                 <span style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>₹1,00,000</span>
               </div>
@@ -451,13 +472,13 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
         </div>
 
         {/* ── PERFORMANCE CHART ───────────────────────────────────────────────── */}
-        <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, margin: '12px 12px 0', padding: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: t.bgCard, borderRadius: 14, border: `1px solid ${t.border}`, margin: '12px 12px 0', padding: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
             <p style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>Portfolio Performance</p>
             <div style={{ display: 'flex', gap: 4 }}>
               {['1W', '1M', '3M', 'All'].map(p => (
                 <button key={p} onClick={() => setActivePeriod(p)}
-                  style={{ background: activePeriod === p ? C.green : '#F5F9F5', color: activePeriod === p ? '#FFFFFF' : C.muted, border: activePeriod === p ? 'none' : `1px solid ${C.border}`, borderRadius: 20, padding: '3px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s ease' }}>
+                  style={{ background: activePeriod === p ? t.primary : t.bgInput, color: activePeriod === p ? '#FFFFFF' : C.muted, border: activePeriod === p ? 'none' : `1px solid ${t.border}`, borderRadius: 20, padding: '3px 8px', fontSize: 8, fontWeight: 600, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s ease' }}>
                   {p}
                 </button>
               ))}
@@ -503,7 +524,7 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
         </div>
 
         {/* ── ASSET ALLOCATION DONUT ──────────────────────────────────────────── */}
-        <div style={{ background: C.card, borderRadius: 14, border: `1px solid ${C.border}`, margin: '12px 12px 0', padding: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
+        <div style={{ background: t.bgCard, borderRadius: 14, border: `1px solid ${t.border}`, margin: '12px 12px 0', padding: 12, boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
             <p style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>Asset Allocation</p>
             <span style={{ color: C.muted, fontSize: 9 }}>
@@ -554,111 +575,242 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
           )}
         </div>
 
-        {/* ── MY HOLDINGS ─────────────────────────────────────────────────────── */}
+        {/* ── HOLDINGS / INTRADAY TABS ─────────────────────────────────────────── */}
         <div style={{ padding: '12px 12px 0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-            <p style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>My Holdings</p>
-            <button onClick={() => navigate('/trade')} style={{ color: C.green, fontSize: 9, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
-              Trade →
+
+          {/* Tab switcher */}
+          <div style={{ display: 'flex', background: t.bgInput, borderRadius: 10, padding: 3, marginBottom: 10, border: `1px solid ${t.border}` }}>
+            <button
+              onClick={() => setActiveTab('holdings')}
+              style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, background: activeTab === 'holdings' ? t.bgCard : 'transparent', color: activeTab === 'holdings' ? C.green : C.muted, border: activeTab === 'holdings' ? `1px solid ${t.border}` : 'none', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: activeTab === 'holdings' ? '0 1px 4px rgba(0,0,0,0.08)' : 'none', transition: 'all 0.2s' }}
+            >
+              📊 Holdings
+            </button>
+            <button
+              onClick={() => setActiveTab('intraday')}
+              style={{ flex: 1, padding: '7px 0', borderRadius: 8, fontSize: 11, fontWeight: 700, background: activeTab === 'intraday' ? '#E65100' : 'transparent', color: activeTab === 'intraday' ? '#fff' : C.muted, border: 'none', cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 }}
+            >
+              ⚡ Intraday
+              {intradayPositions.length > 0 && (
+                <span style={{ background: activeTab === 'intraday' ? 'rgba(255,255,255,0.3)' : '#E65100', color: '#fff', borderRadius: 10, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>
+                  {intradayPositions.length}
+                </span>
+              )}
             </button>
           </div>
 
-          {isLoading ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-              {[1, 2, 3].map(i => (
-                <div key={i} style={{ background: '#FFFFFF', borderRadius: 12, padding: '10px 12px', border: `1px solid ${C.border}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <Shimmer w={40} h={40} radius={12} />
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        <Shimmer w={60} h={11} /><Shimmer w={100} h={9} />
+          {/* ── HOLDINGS TAB ──────────────────────────────────────────────────── */}
+          {activeTab === 'holdings' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <p style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>My Holdings</p>
+                <button onClick={() => navigate('/trade')} style={{ color: C.green, fontSize: 9, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+                  Trade →
+                </button>
+              </div>
+
+              {isLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {[1, 2, 3].map(i => (
+                    <div key={i} style={{ background: t.bgCard, borderRadius: 12, padding: '10px 12px', border: `1px solid ${t.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                          <Shimmer w={40} h={40} radius={12} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Shimmer w={60} h={11} /><Shimmer w={100} h={9} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
+                          <Shimmer w={70} h={14} /><Shimmer w={80} h={11} />
+                        </div>
                       </div>
+                      <Shimmer h={3} radius={2} />
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-end' }}>
-                      <Shimmer w={70} h={14} /><Shimmer w={80} h={11} />
-                    </div>
-                  </div>
-                  <Shimmer h={3} radius={2} />
+                  ))}
                 </div>
-              ))}
-            </div>
-          ) : holdings.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px 20px', background: '#FFFFFF', borderRadius: 16, border: '1px dashed #C8E6C9' }}>
-              <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
-              <p style={{ color: C.dark, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No Holdings Yet</p>
-              <p style={{ color: C.muted, fontSize: 12, marginBottom: 16 }}>Buy your first stock to start building your portfolio!</p>
-              <button onClick={() => navigate('/trade')} style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-                Start Trading →
-              </button>
-            </div>
-          ) : (
-            holdings.map((h, idx) => {
-              const isProfit  = h.pnl >= 0
-              const weight    = holdingsCurrentValue > 0 ? (h.currentValue / holdingsCurrentValue) * 100 : 0
-              const bgColor   = LOGO_BG[idx % LOGO_BG.length]
-              const fgColor   = LOGO_FG[idx % LOGO_FG.length]
-              const initials  = h.displaySymbol.slice(0, 2).toUpperCase()
-
-              return (
-                <div key={h.symbol}
-                  style={{ background: '#FFFFFF', borderRadius: 14, padding: '14px', marginBottom: 8, border: '1px solid #F0F0F0', boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'border-color 0.15s' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#C8E6C9')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#F0F0F0')}
-                >
-                  {/* Top row */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 12, background: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: fgColor, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
-                        {initials}
-                      </div>
-                      <div>
-                        <p style={{ color: C.dark, fontSize: 14, fontWeight: 700, marginBottom: 1 }}>{h.displaySymbol}</p>
-                        <p style={{ color: C.muted, fontSize: 11 }}>{h.company_name ?? h.displaySymbol}</p>
-                      </div>
-                    </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <p style={{ color: C.dark, fontSize: 15, fontWeight: 700, marginBottom: 3 }}>
-                        ₹{h.currentValue.toLocaleString('en-IN')}
-                      </p>
-                      <span style={{ background: isProfit ? C.greenBg : C.redBg, color: isProfit ? C.greenDark : C.redDark, border: `1px solid ${isProfit ? '#C8E6C9' : '#FFCDD2'}`, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
-                        {isProfit ? '+' : '−'}₹{Math.abs(h.pnl).toLocaleString('en-IN')} ({isProfit ? '+' : ''}{h.pnlPercent.toFixed(2)}%)
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Detail row */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                    <p style={{ color: C.muted, fontSize: 11 }}>
-                      {h.quantity} shares · Avg ₹{h.avg_price.toLocaleString('en-IN')} · LTP ₹{h.livePrice.toLocaleString('en-IN')}
-                    </p>
-                    <span style={{ color: h.dayChangePct >= 0 ? '#4CAF50' : '#F44336', fontSize: 10, fontWeight: 600 }}>
-                      {h.dayChangePct >= 0 ? '▲' : '▼'} {Math.abs(h.dayChangePct).toFixed(2)}% today
-                    </span>
-                  </div>
-
-                  {/* P&L progress bar */}
-                  <div style={{ height: 3, background: '#F0F0F0', borderRadius: 2, marginBottom: 10 }}>
-                    <div style={{ height: 3, background: isProfit ? '#4CAF50' : '#F44336', borderRadius: 2, width: `${Math.min(weight, 100)}%`, transition: 'width 0.5s ease' }} />
-                  </div>
-
-                  {/* Buy More / Sell */}
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <button
-                      onClick={() => navigate('/trade', { state: { symbol: h.displaySymbol, description: h.company_name ?? h.displaySymbol, mode: 'BUY' } })}
-                      style={{ flex: 1, background: C.greenBg, border: '1px solid #C8E6C9', borderRadius: 8, padding: '7px', color: C.greenDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-                    >
-                      + Buy More
-                    </button>
-                    <button
-                      onClick={() => navigate('/trade', { state: { symbol: h.displaySymbol, description: h.company_name ?? h.displaySymbol, mode: 'SELL' } })}
-                      style={{ flex: 1, background: C.redBg, border: '1px solid #FFCDD2', borderRadius: 8, padding: '7px', color: C.redDark, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
-                    >
-                      − Sell
-                    </button>
-                  </div>
+              ) : holdings.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: t.bgCard, borderRadius: 16, border: `1px dashed ${t.primaryBorder}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>📊</div>
+                  <p style={{ color: C.dark, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No Holdings Yet</p>
+                  <p style={{ color: C.muted, fontSize: 12, marginBottom: 16 }}>Buy your first stock to start building your portfolio!</p>
+                  <button onClick={() => navigate('/trade')} style={{ background: '#4CAF50', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    Start Trading →
+                  </button>
                 </div>
-              )
-            })
+              ) : (
+                holdings.map((h, idx) => {
+                  const isProfit  = h.pnl >= 0
+                  const weight    = holdingsCurrentValue > 0 ? (h.currentValue / holdingsCurrentValue) * 100 : 0
+                  const bgColor   = LOGO_BG[idx % LOGO_BG.length]
+                  const fgColor   = LOGO_FG[idx % LOGO_FG.length]
+                  const initials  = h.displaySymbol.slice(0, 2).toUpperCase()
+
+                  return (
+                    <div key={h.symbol}
+                      style={{ background: t.bgCard, borderRadius: 14, padding: '14px', marginBottom: 8, border: `1px solid ${t.borderSubtle}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)', transition: 'border-color 0.15s' }}
+                      onMouseEnter={e => (e.currentTarget.style.borderColor = t.primaryBorder)}
+                      onMouseLeave={e => (e.currentTarget.style.borderColor = t.borderSubtle)}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                          <div style={{ width: 40, height: 40, borderRadius: 12, background: bgColor, display: 'flex', alignItems: 'center', justifyContent: 'center', color: fgColor, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+                            {initials}
+                          </div>
+                          <div>
+                            <p style={{ color: C.dark, fontSize: 14, fontWeight: 700, marginBottom: 1 }}>{h.displaySymbol}</p>
+                            <p style={{ color: C.muted, fontSize: 11 }}>{h.company_name ?? h.displaySymbol}</p>
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <p style={{ color: C.dark, fontSize: 15, fontWeight: 700, marginBottom: 3 }}>
+                            ₹{h.currentValue.toLocaleString('en-IN')}
+                          </p>
+                          <span style={{ background: isProfit ? t.successBg : t.dangerBg, color: isProfit ? t.success : t.danger, border: `1px solid ${isProfit ? t.successBorder : t.dangerBorder}`, fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>
+                            {isProfit ? '+' : '−'}₹{Math.abs(h.pnl).toLocaleString('en-IN')} ({isProfit ? '+' : ''}{h.pnlPercent.toFixed(2)}%)
+                          </span>
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                        <p style={{ color: C.muted, fontSize: 11 }}>
+                          {h.quantity} shares · Avg ₹{h.avg_price.toLocaleString('en-IN')} · LTP ₹{h.livePrice.toLocaleString('en-IN')}
+                        </p>
+                        <span style={{ color: h.dayChangePct >= 0 ? '#4CAF50' : '#F44336', fontSize: 10, fontWeight: 600 }}>
+                          {h.dayChangePct >= 0 ? '▲' : '▼'} {Math.abs(h.dayChangePct).toFixed(2)}% today
+                        </span>
+                      </div>
+
+                      <div style={{ height: 3, background: t.borderSubtle, borderRadius: 2, marginBottom: 10 }}>
+                        <div style={{ height: 3, background: isProfit ? '#4CAF50' : '#F44336', borderRadius: 2, width: `${Math.min(weight, 100)}%`, transition: 'width 0.5s ease' }} />
+                      </div>
+
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <button
+                          onClick={() => navigate('/trade', { state: { symbol: h.displaySymbol, description: h.company_name ?? h.displaySymbol, mode: 'BUY' } })}
+                          style={{ flex: 1, background: t.successBg, border: `1px solid ${t.successBorder}`, borderRadius: 8, padding: '7px', color: t.success, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                        >
+                          + Buy More
+                        </button>
+                        <button
+                          onClick={() => navigate('/trade', { state: { symbol: h.displaySymbol, description: h.company_name ?? h.displaySymbol, mode: 'SELL' } })}
+                          style={{ flex: 1, background: t.dangerBg, border: `1px solid ${t.dangerBorder}`, borderRadius: 8, padding: '7px', color: t.danger, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+                        >
+                          − Sell
+                        </button>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </>
+          )}
+
+          {/* ── INTRADAY TAB ──────────────────────────────────────────────────── */}
+          {activeTab === 'intraday' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                <p style={{ color: C.dark, fontSize: 11, fontWeight: 700 }}>Today's Intraday</p>
+                <button onClick={() => navigate('/trade')} style={{ color: '#E65100', fontSize: 9, fontWeight: 600, background: 'none', border: 'none', cursor: 'pointer' }}>
+                  Trade →
+                </button>
+              </div>
+
+              {/* Summary banner */}
+              {intradayPositions.length > 0 && (
+                <div style={{ background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: 12, padding: '10px 12px', marginBottom: 12, display: 'flex', gap: 4 }}>
+                  {[
+                    { label: 'Total', value: intradayPositions.length, color: '#E65100' },
+                    { label: 'Open', value: intradayOpen.length, color: '#FF9800' },
+                    { label: 'Sq. Off', value: intradayClosed.length, color: '#795548' },
+                    { label: 'Net P&L', value: `${intradayNetPnl >= 0 ? '+' : ''}${fmtINR(intradayNetPnl)}`, color: intradayNetPnl >= 0 ? '#2E7D32' : '#C62828' },
+                  ].map(s => (
+                    <div key={s.label} style={{ flex: 1, textAlign: 'center', padding: '4px 0' }}>
+                      <p style={{ color: '#795548', fontSize: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: 3 }}>{s.label}</p>
+                      <p style={{ color: s.color, fontSize: 12, fontWeight: 800 }}>{s.value}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {isLoading ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+                  {[1, 2].map(i => (
+                    <div key={i} style={{ background: t.bgCard, borderRadius: 12, padding: '12px 14px', border: `1px solid ${t.border}` }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+                          <Shimmer w={80} h={14} /><Shimmer w={140} h={9} />
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 5, alignItems: 'flex-end' }}>
+                          <Shimmer w={70} h={14} /><Shimmer w={50} h={9} />
+                        </div>
+                      </div>
+                      <Shimmer h={28} radius={8} />
+                    </div>
+                  ))}
+                </div>
+              ) : intradayPositions.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '40px 20px', background: t.bgCard, borderRadius: 16, border: `1px dashed ${t.border}` }}>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>⚡</div>
+                  <p style={{ color: C.dark, fontSize: 15, fontWeight: 700, marginBottom: 6 }}>No Intraday Trades Today</p>
+                  <p style={{ color: C.muted, fontSize: 12, marginBottom: 16 }}>Select Intraday mode in Trade page to get started!</p>
+                  <button onClick={() => navigate('/trade')} style={{ background: '#E65100', color: '#fff', border: 'none', borderRadius: 10, padding: '10px 24px', fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                    Trade Now →
+                  </button>
+                </div>
+              ) : (
+                intradayPositions.map((pos, idx) => {
+                  const isOpen = pos.status === 'open'
+                  const pnl    = pos.profit_loss ?? 0
+                  const sym    = cleanSymbol(pos.symbol)
+                  const accentColor = isOpen ? '#FF9800' : pnl >= 0 ? '#4CAF50' : '#F44336'
+                  return (
+                    <div key={pos.id ?? idx} style={{ background: t.bgCard, borderRadius: 14, padding: 14, marginBottom: 8, border: `1px solid ${t.borderSubtle}`, borderLeft: `3px solid ${accentColor}`, boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+                      {/* Top row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                        <div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                            <p style={{ color: C.dark, fontSize: 14, fontWeight: 700 }}>{sym}</p>
+                            <span style={{ background: isOpen ? '#FFF3E0' : pnl >= 0 ? t.successBg : t.dangerBg, color: isOpen ? '#E65100' : pnl >= 0 ? t.success : t.danger, border: `1px solid ${isOpen ? '#FFB74D' : pnl >= 0 ? t.successBorder : t.dangerBorder}`, fontSize: 8, fontWeight: 700, padding: '2px 7px', borderRadius: 20 }}>
+                              {isOpen ? 'OPEN' : pos.status === 'squared_off' ? 'AUTO SQ-OFF' : 'SOLD'}
+                            </span>
+                          </div>
+                          <p style={{ color: C.muted, fontSize: 11 }}>
+                            {pos.quantity} shares · Buy ₹{pos.buy_price?.toFixed(2)}
+                            {!isOpen && pos.sell_price ? ` · Sell ₹${pos.sell_price?.toFixed(2)}` : ''}
+                          </p>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          {isOpen ? (
+                            <p style={{ color: '#FF9800', fontSize: 13, fontWeight: 700 }}>Position Open</p>
+                          ) : (
+                            <p style={{ color: pnl >= 0 ? t.success : t.danger, fontSize: 15, fontWeight: 700 }}>
+                              {pnl >= 0 ? '+' : ''}{fmtINR(pnl)}
+                            </p>
+                          )}
+                          <p style={{ color: C.muted, fontSize: 9, marginTop: 3 }}>
+                            {pos.created_at ? formatDate(pos.created_at) : '—'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Value row */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '7px 10px', background: t.bgHover, borderRadius: 8 }}>
+                        <span style={{ color: C.muted, fontSize: 10 }}>
+                          Buy Value: {fmtINR((pos.buy_price ?? 0) * (pos.quantity ?? 0))}
+                        </span>
+                        {isOpen ? (
+                          <span style={{ color: '#FF9800', fontSize: 10, fontWeight: 600 }}>Auto sq-off @ 3:20 PM</span>
+                        ) : (
+                          <span style={{ color: pnl >= 0 ? t.success : t.danger, fontSize: 10, fontWeight: 700 }}>
+                            P&L: {pnl >= 0 ? '+' : ''}{fmtINR(pnl)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+            </>
           )}
         </div>
 
@@ -690,7 +842,7 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
             </button>
 
             {showReview && aiReview && (
-              <div style={{ marginTop: 12, background: '#FFFFFF', border: '1px solid #C8E6C9', borderRadius: 14, overflow: 'hidden', boxShadow: '0 4px 20px rgba(76,175,80,0.1)', marginBottom: 4 }}>
+              <div style={{ marginTop: 12, background: t.bgCard, border: `1px solid ${t.primaryBorder}`, borderRadius: 14, overflow: 'hidden', boxShadow: '0 4px 20px rgba(76,175,80,0.1)', marginBottom: 4 }}>
                 {/* Card header */}
                 <div style={{ background: 'linear-gradient(135deg, #2E7D32 0%, #4CAF50 100%)', padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -733,7 +885,7 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
         {/* ── RECENT TRADES ────────────────────────────────────────────────────── */}
         <div style={{ padding: '12px 12px 12px' }}>
           <p style={{ color: C.dark, fontSize: 11, fontWeight: 700, marginBottom: 10 }}>Recent Trades</p>
-          <div style={{ background: '#FFFFFF', borderRadius: 12, border: '1px solid #F0F0F0', overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
+          <div style={{ background: t.bgCard, borderRadius: 12, border: `1px solid ${t.borderSubtle}`, overflow: 'hidden', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}>
             {isLoading ? (
               <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 12 }}>
                 {[1, 2, 3].map(i => (
@@ -759,9 +911,9 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
                 const sym    = cleanSymbol(trade.symbol)
                 return (
                   <div key={trade.id ?? i}
-                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderBottom: isLast ? 'none' : '1px solid #F5F9F5' }}>
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '9px 12px', borderBottom: isLast ? 'none' : `1px solid ${t.borderSubtle}` }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ width: 28, height: 28, borderRadius: 8, background: isBuy ? C.greenBg : C.redBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isBuy ? C.greenDark : C.redDark, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                      <div style={{ width: 28, height: 28, borderRadius: 8, background: isBuy ? t.successBg : t.dangerBg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: isBuy ? t.success : t.danger, fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
                         {isBuy ? 'B' : 'S'}
                       </div>
                       <div>
@@ -785,12 +937,12 @@ Be direct, specific, and use Indian market context. Keep each section concise (2
       </div>
 
       {/* ── BOTTOM NAV ────────────────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: '#FFFFFF', borderTop: '1px solid #EBF5EB', padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: t.navBg, borderTop: `1px solid ${t.navBorder}`, padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
         <NavItem icon={Home}          label="Home"      onClick={() => navigate('/home')}      />
         <NavItem icon={TrendingUp}    label="Trade"     onClick={() => navigate('/trade')}     />
         <button onClick={() => navigate('/simulator')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
-          <TrophyIcon size={22} color="#AAAAAA" />
-          <span style={{ color: '#AAAAAA', fontSize: 9, fontWeight: 500 }}>League</span>
+          <TrophyIcon size={22} color={t.textMuted} />
+          <span style={{ color: t.textMuted, fontSize: 9, fontWeight: 500 }}>League</span>
         </button>
         <NavItem icon={MessageCircle} label="AI Mentor" onClick={() => navigate('/ai-mentor')} />
         <NavItem icon={User}          label="Profile"   onClick={() => navigate('/profile')}   />

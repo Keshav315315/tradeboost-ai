@@ -3,18 +3,19 @@ import { useNavigate } from 'react-router-dom'
 import { ChevronLeft, Home, TrendingUp, MessageCircle, User } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { supabase } from '../lib/supabase'
+import { useTheme } from '../context/ThemeContext'
 
-// ── Design tokens ─────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#F8FAF8',
-  card:      '#FFFFFF',
-  border:    '#E8F5E9',
-  green:     '#4CAF50',
-  greenDark: '#2E7D32',
-  greenBg:   '#E8F5E9',
-  muted:     '#888888',
-  dark:      '#1A1A1A',
-}
+// ── Design tokens (resolved at runtime from theme) ────────────────────────────
+const mkC = (t) => ({
+  bg:        t.bgPrimary,
+  card:      t.bgCard,
+  border:    t.border,
+  green:     t.primary,
+  greenDark: t.primaryDark,
+  greenBg:   t.primaryLight,
+  muted:     t.textMuted,
+  dark:      t.textPrimary,
+})
 
 // ── Quick chips ────────────────────────────────────────────────────────────────
 const CHIPS = [
@@ -55,11 +56,12 @@ function formatMessage(text) {
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
 function TypingDots() {
+  const { t } = useTheme()
   return (
     <div style={{ display: 'flex', gap: 4, alignItems: 'center', padding: '4px 0' }}>
       {[0, 1, 2].map(i => (
         <div key={i} style={{
-          width: 6, height: 6, borderRadius: '50%', background: C.green,
+          width: 6, height: 6, borderRadius: '50%', background: t.primary,
           animation: 'typingDot 1.4s infinite', animationDelay: `${i * 0.2}s`,
         }} />
       ))}
@@ -74,10 +76,11 @@ function TypingDots() {
 }
 
 function AIAvatar({ size = 28 }) {
+  const { t } = useTheme()
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%',
-      background: C.green, display: 'flex', alignItems: 'center',
+      background: t.primary, display: 'flex', alignItems: 'center',
       justifyContent: 'center', fontSize: size * 0.5, flexShrink: 0,
       boxShadow: '0 2px 8px rgba(76,175,80,0.25)',
     }}>🤖</div>
@@ -102,12 +105,13 @@ function LevelBadge({ level }) {
 }
 
 function NavItem({ icon: Icon, label, active, onClick }) {
-  const color = active ? '#4CAF50' : '#AAAAAA'
+  const { t } = useTheme()
+  const color = active ? t.primary : t.textMuted
   return (
     <button onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
       <Icon size={22} color={color} strokeWidth={active ? 2.2 : 1.8} />
       <span style={{ color, fontSize: 9, fontWeight: active ? 700 : 500 }}>{label}</span>
-      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: '#4CAF50', marginTop: -1 }} />}
+      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: t.primary, marginTop: -1 }} />}
     </button>
   )
 }
@@ -128,6 +132,8 @@ function TrophyIcon({ size = 22, color = '#AAAAAA' }) {
 // ── Main component ─────────────────────────────────────────────────────────────
 export default function AIMentorPage() {
   const navigate       = useNavigate()
+  const { theme, t }   = useTheme()
+  const C              = mkC(t)
   const inputRef       = useRef(null)
   const chatEndRef     = useRef(null)
   const recognitionRef = useRef(null)
@@ -303,7 +309,7 @@ export default function AIMentorPage() {
   // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div style={{
-      background: C.bg, minHeight: '100dvh',
+      background: t.bgPrimary, minHeight: '100dvh',
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       fontFamily: "'Plus Jakarta Sans', sans-serif",
     }}>
@@ -312,14 +318,14 @@ export default function AIMentorPage() {
         {/* ── HEADER ───────────────────────────────────────────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '10px 14px', borderBottom: '1px solid #EBF5EB',
-          background: C.card, flexShrink: 0,
+          padding: '10px 14px', borderBottom: `1px solid ${t.headerBorder}`,
+          background: t.headerBg, flexShrink: 0,
           boxShadow: '0 1px 8px rgba(0,0,0,0.04)',
         }}>
           <button
             onClick={() => navigate('/home')}
             style={{
-              background: '#F5F9F5', border: '1px solid #E8F5E9', borderRadius: 10,
+              background: t.bgInput, border: `1px solid ${t.border}`, borderRadius: 10,
               padding: '5px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0,
             }}
           >
@@ -348,11 +354,11 @@ export default function AIMentorPage() {
               toast(next ? '🔊 Voice on' : '🔇 Voice off')
             }}
             style={{
-              background: autoSpeak ? '#E8F5E9' : '#F5F9F5',
-              border: autoSpeak ? '1px solid #4CAF50' : '1px solid #E0EDE0',
+              background: autoSpeak ? t.primaryLight : t.bgInput,
+              border: autoSpeak ? `1px solid ${t.primary}` : `1px solid ${t.borderInput}`,
               borderRadius: 20, padding: '4px 10px',
               fontSize: 10, fontWeight: 600,
-              color: autoSpeak ? C.greenDark : C.muted,
+              color: autoSpeak ? t.primaryDark : t.textMuted,
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
               flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s',
             }}
@@ -364,9 +370,9 @@ export default function AIMentorPage() {
         {/* ── QUICK CHIPS ──────────────────────────────────────────────────── */}
         <div style={{
           display: 'flex', gap: 6, padding: '10px 12px',
-          overflowX: 'auto', borderBottom: '1px solid #F0F0F0',
+          overflowX: 'auto', borderBottom: `1px solid ${t.borderSubtle}`,
           scrollbarWidth: 'none', msOverflowStyle: 'none',
-          flexShrink: 0, background: C.card,
+          flexShrink: 0, background: t.bgCard,
         }}>
           {CHIPS.map(chip => (
             <button
@@ -374,9 +380,9 @@ export default function AIMentorPage() {
               onClick={() => sendMessage(chip)}
               disabled={isLoading}
               style={{
-                background: '#F0FBF0', border: '1px solid #C8E6C9',
+                background: t.primaryLight, border: `1px solid ${t.primaryBorder}`,
                 borderRadius: 20, padding: '6px 12px',
-                color: C.greenDark, fontSize: 10, fontWeight: 600,
+                color: t.primaryDark, fontSize: 10, fontWeight: 600,
                 cursor: isLoading ? 'not-allowed' : 'pointer',
                 whiteSpace: 'nowrap', flexShrink: 0,
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
@@ -391,9 +397,9 @@ export default function AIMentorPage() {
         {/* ── ERROR BANNER ─────────────────────────────────────────────────── */}
         {error && (
           <div style={{
-            background: '#FFEBEE', border: '1px solid #FFCDD2',
+            background: t.dangerBg, border: `1px solid ${t.dangerBorder}`,
             borderRadius: 10, padding: '10px 14px', margin: '8px 14px',
-            fontSize: 12, color: '#C62828', flexShrink: 0,
+            fontSize: 12, color: t.danger, flexShrink: 0,
           }}>
             ⚠️ {error} — Please try again
           </div>
@@ -404,7 +410,7 @@ export default function AIMentorPage() {
           flex: 1, overflowY: 'auto', padding: '12px 14px',
           display: 'flex', flexDirection: 'column', gap: 12,
           scrollbarWidth: 'none', msOverflowStyle: 'none',
-          background: '#F8FAF8',
+          background: t.bgPrimary,
         }}>
           <p style={{
             textAlign: 'center', color: C.muted, fontSize: 9,
@@ -427,11 +433,13 @@ export default function AIMentorPage() {
               <div style={{ maxWidth: '78%' }}>
                 <div
                   style={{
-                    background: msg.role === 'user' ? C.green : C.card,
-                    color: msg.role === 'user' ? '#FFFFFF' : C.dark,
+                    background: msg.role === 'user'
+                      ? t.primary
+                      : (theme === 'dark' ? '#1A2540' : t.bgCard),
+                    color: msg.role === 'user' ? '#FFFFFF' : (theme === 'dark' ? '#CBD5E1' : t.textPrimary),
                     border: msg.role === 'user'
                       ? 'none'
-                      : `1px solid ${msg.isError ? '#FFCDD2' : '#E8F5E9'}`,
+                      : `1px solid ${msg.isError ? t.dangerBorder : t.border}`,
                     borderRadius: msg.role === 'user'
                       ? '16px 16px 4px 16px'
                       : '16px 16px 16px 4px',
@@ -474,7 +482,8 @@ export default function AIMentorPage() {
             <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
               <AIAvatar size={28} />
               <div style={{
-                background: C.card, border: '1px solid #E8F5E9',
+                background: theme === 'dark' ? '#1A2540' : t.bgCard,
+                border: `1px solid ${t.border}`,
                 borderRadius: '16px 16px 16px 4px', padding: '12px 16px',
                 boxShadow: '0 1px 4px rgba(0,0,0,0.04)',
               }}>
@@ -490,7 +499,7 @@ export default function AIMentorPage() {
         {isListening && (
           <div style={{
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            gap: 3, padding: '8px 12px', background: '#E8F5E9', flexShrink: 0,
+            gap: 3, padding: '8px 12px', background: t.primaryLight, flexShrink: 0,
           }}>
             {VOICE_BAR_H.map((h, i) => (
               <div key={i} style={{
@@ -508,8 +517,8 @@ export default function AIMentorPage() {
         {/* ── INPUT ROW ────────────────────────────────────────────────────── */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 8,
-          padding: '12px 14px', borderTop: '1px solid #EBF5EB',
-          background: C.card, flexShrink: 0,
+          padding: '12px 14px', borderTop: `1px solid ${t.headerBorder}`,
+          background: t.bgCard, flexShrink: 0,
         }}>
           {/* Mic button */}
           <button
@@ -517,8 +526,8 @@ export default function AIMentorPage() {
             title={voiceSupported ? (isListening ? 'Stop' : 'Speak') : 'Not supported'}
             style={{
               width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-              background: isListening ? '#E8F5E9' : '#F5F9F5',
-              border: isListening ? '2px solid #4CAF50' : '1px solid #C8E6C9',
+              background: isListening ? t.primaryLight : t.bgInput,
+              border: isListening ? `2px solid ${t.primary}` : `1px solid ${t.primaryBorder}`,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer', transition: 'all 0.2s',
               animation: isListening ? 'pulse-green 1.5s infinite' : 'none',
@@ -550,14 +559,14 @@ export default function AIMentorPage() {
             placeholder={isListening ? 'Listening...' : 'Ask anything about stocks...'}
             disabled={isLoading}
             style={{
-              flex: 1, background: '#F5F9F5', border: '1px solid #E0EDE0',
+              flex: 1, background: t.bgInput, border: `1px solid ${t.borderInput}`,
               borderRadius: 20, padding: '10px 14px',
-              color: C.dark, fontSize: 13,
+              color: t.textPrimary, fontSize: 13,
               fontFamily: "'Plus Jakarta Sans', sans-serif",
               outline: 'none', opacity: isLoading ? 0.6 : 1, transition: 'border-color 0.2s',
             }}
-            onFocus={e => (e.target.style.borderColor = '#4CAF50')}
-            onBlur={e => (e.target.style.borderColor = '#E0EDE0')}
+            onFocus={e => (e.target.style.borderColor = t.primary)}
+            onBlur={e => (e.target.style.borderColor = t.borderInput)}
           />
 
           {/* Send button */}
@@ -566,7 +575,7 @@ export default function AIMentorPage() {
             disabled={isLoading || !inputText.trim()}
             style={{
               width: 40, height: 40, borderRadius: '50%', flexShrink: 0,
-              background: inputText.trim() && !isLoading ? C.green : '#E8F5E9',
+              background: inputText.trim() && !isLoading ? t.primary : t.primaryLight,
               border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: inputText.trim() && !isLoading ? 'pointer' : 'not-allowed',
               transition: 'all 0.2s',
@@ -574,7 +583,7 @@ export default function AIMentorPage() {
             }}
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-              stroke={inputText.trim() && !isLoading ? '#fff' : '#4CAF50'}
+              stroke={inputText.trim() && !isLoading ? '#fff' : t.primary}
               strokeWidth="2.5">
               <line x1="22" y1="2" x2="11" y2="13" />
               <polygon points="22 2 15 22 11 13 2 9 22 2" />
@@ -598,12 +607,12 @@ export default function AIMentorPage() {
       `}</style>
 
       {/* ── BOTTOM NAV ───────────────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: '#FFFFFF', borderTop: '1px solid #EBF5EB', padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: t.navBg, borderTop: `1px solid ${t.navBorder}`, padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
         <NavItem icon={Home}          label="Home"      onClick={() => navigate('/home')}      />
         <NavItem icon={TrendingUp}    label="Trade"     onClick={() => navigate('/trade')}     />
         <button onClick={() => navigate('/simulator')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
-          <TrophyIcon size={22} color="#AAAAAA" />
-          <span style={{ color: '#AAAAAA', fontSize: 9, fontWeight: 500 }}>League</span>
+          <TrophyIcon size={22} color={t.textMuted} />
+          <span style={{ color: t.textMuted, fontSize: 9, fontWeight: 500 }}>League</span>
         </button>
         <NavItem icon={MessageCircle} label="AI Mentor" active                                 />
         <NavItem icon={User}          label="Profile"   onClick={() => navigate('/profile')}   />

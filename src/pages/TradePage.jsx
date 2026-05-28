@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
+import { useTheme } from '../context/ThemeContext'
 import {
   ChevronLeft, Search, X, Home, TrendingUp,
   MessageCircle, User, Star, Bell, Info, RefreshCw,
@@ -10,23 +11,23 @@ import { supabase } from '../lib/supabase'
 import StopLossPanel from '../components/StopLossPanel'
 
 // ── Design tokens ──────────────────────────────────────────────────────────────
-const C = {
-  bg:        '#F8FAF8',
-  card:      '#FFFFFF',
-  border:    '#E8F5E9',
-  green:     '#4CAF50',
-  greenDark: '#2E7D32',
-  greenBg:   '#E8F5E9',
-  strongBuy: '#00C853',
-  red:       '#F44336',
-  redDark:   '#C62828',
-  redBg:     '#FFEBEE',
+const mkC = (t) => ({
+  bg:        t.bgPrimary,
+  card:      t.bgCard,
+  border:    t.border,
+  green:     t.primary,
+  greenDark: t.primaryDark,
+  greenBg:   t.primaryLight,
+  strongBuy: t.success,
+  red:       t.danger,
+  redDark:   t.danger,
+  redBg:     t.dangerBg,
   hold:      '#FF9800',
-  muted:     '#888888',
-  medium:    '#555555',
-  dark:      '#1A1A1A',
+  muted:     t.textMuted,
+  medium:    t.textSecondary,
+  dark:      t.textPrimary,
   signalBg:  '#0F1628',
-}
+})
 
 const SIGNAL_COLORS = {
   'STRONG BUY':  '#00C853',
@@ -305,6 +306,17 @@ const getCountdownToOpen = () => {
   return `Opens in ${h}h ${m}m`
 }
 
+const getTimeToSquareOff = () => {
+  const ist = getISTTime()
+  const squareOff = new Date(ist)
+  squareOff.setHours(15, 20, 0, 0)
+  const diff = squareOff - ist
+  if (diff <= 0) return 'Closed'
+  const h = Math.floor(diff / 3600000)
+  const m = Math.floor((diff % 3600000) / 60000)
+  return h === 0 ? `${m}m left` : `${h}h ${m}m`
+}
+
 const getSentiment = (headline) => {
   const h = headline.toLowerCase()
   const pos = ['profit', 'growth', 'record', 'surge', 'rally', 'beat', 'gain', 'strong', 'rise', 'boost']
@@ -316,10 +328,11 @@ const getSentiment = (headline) => {
 
 // ── Shimmer ────────────────────────────────────────────────────────────────────
 function Shimmer({ w = '100%', h = 12, radius = 6 }) {
+  const { t } = useTheme()
   return (
     <div style={{
       width: w, height: h, borderRadius: radius,
-      background: 'linear-gradient(90deg,#F0F0F0 25%,#E8F5E9 50%,#F0F0F0 75%)',
+      background: `linear-gradient(90deg,${t.borderSubtle} 25%,${t.border} 50%,${t.borderSubtle} 75%)`,
       backgroundSize: '200% 100%', animation: 'shimmer 1.4s ease-in-out infinite',
     }} />
   )
@@ -327,12 +340,13 @@ function Shimmer({ w = '100%', h = 12, radius = 6 }) {
 
 // ── NavItem ────────────────────────────────────────────────────────────────────
 function NavItem({ icon: Icon, label, active, onClick }) {
-  const color = active ? C.green : '#AAAAAA'
+  const { t } = useTheme()
+  const color = active ? t.primary : t.textHint
   return (
     <button onClick={onClick} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
       <Icon size={22} color={color} strokeWidth={active ? 2.2 : 1.8} />
       <span style={{ color, fontSize: 9, fontWeight: active ? 700 : 500 }}>{label}</span>
-      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: C.green, marginTop: -1 }} />}
+      {active && <div style={{ width: 4, height: 4, borderRadius: '50%', background: t.primary, marginTop: -1 }} />}
     </button>
   )
 }
@@ -386,15 +400,29 @@ function ConfidenceRing({ confidence, color, size = 68 }) {
 }
 
 // ── Quantity Modal ─────────────────────────────────────────────────────────────
-function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, onClose, isTrading }) {
+function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, onClose, isTrading, onPlaceLimitOrder }) {
+  const { t } = useTheme()
+  const C = mkC(t)
   const [qty, setQty] = useState(1)
+  const [orderType,  setOrderType]  = useState('market')
+  const [limitPrice, setLimitPrice] = useState('')
   const price  = quote?.c ?? 0
-  const total  = parseFloat((qty * price).toFixed(2))
   const isBuy  = mode === 'BUY'
+  const total  = isBuy && orderType === 'limit' && limitPrice
+    ? parseFloat((qty * parseFloat(limitPrice)).toFixed(2))
+    : parseFloat((qty * price).toFixed(2))
   const maxQty = isBuy ? Math.floor(balance / (price || 1)) : (holding?.quantity ?? 0)
-  const canGo  = qty > 0 && price > 0 && (isBuy ? total <= balance : holding && qty <= holding.quantity)
+  const canGo  = qty > 0 && price > 0 && (
+    isBuy
+      ? (orderType === 'limit'
+          ? (parseFloat(limitPrice) > 0 && total <= balance)
+          : total <= balance)
+      : (holding && qty <= holding.quantity)
+  )
 
-  useEffect(() => { if (show) setQty(1) }, [show])
+  useEffect(() => {
+    if (show) { setQty(1); setOrderType('market'); setLimitPrice('') }
+  }, [show])
 
   if (!show) return null
 
@@ -407,20 +435,38 @@ function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, 
     >
       <div
         onClick={e => e.stopPropagation()}
-        style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: '#FFFFFF', borderRadius: '20px 20px 0 0', padding: '20px 16px 44px', animation: 'slideUp 0.28s ease' }}
+        style={{ width: '100%', maxWidth: 430, margin: '0 auto', background: t.bgCard, borderRadius: '20px 20px 0 0', padding: '20px 16px 44px', animation: 'slideUp 0.28s ease', maxHeight: '90dvh', overflowY: 'auto' }}
       >
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 }}>
           <p style={{ color: C.dark, fontSize: 16, fontWeight: 800 }}>
             {isBuy ? '📈' : '📉'} {mode} {stock?.displaySymbol}
           </p>
-          <button onClick={onClose} style={{ background: '#F5F5F5', border: 'none', borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}>
+          <button onClick={onClose} style={{ background: t.bgInput, border: 'none', borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}>
             <X size={14} color={C.muted} />
           </button>
         </div>
 
+        {/* Order Type Toggle — BUY only */}
+        {isBuy && (
+          <div style={{ display: 'flex', background: t.bgInput, borderRadius: 10, padding: 3, marginBottom: 16, border: `1px solid ${t.border}` }}>
+            <button
+              onClick={() => setOrderType('market')}
+              style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: orderType === 'market' ? '#4CAF50' : 'transparent', color: orderType === 'market' ? '#fff' : C.muted, transition: 'all 0.2s', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+            >
+              ⚡ Market Order
+            </button>
+            <button
+              onClick={() => setOrderType('limit')}
+              style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: orderType === 'limit' ? '#1565C0' : 'transparent', color: orderType === 'limit' ? '#fff' : C.muted, transition: 'all 0.2s', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+            >
+              🎯 Limit Order
+            </button>
+          </div>
+        )}
+
         {/* Balance row */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', background: '#F8FAF8', borderRadius: 12, padding: '10px 14px', marginBottom: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', background: t.bgPrimary, borderRadius: 12, padding: '10px 14px', marginBottom: 18 }}>
           <div>
             <p style={{ color: C.muted, fontSize: 10, marginBottom: 2 }}>{isBuy ? 'Available Balance' : 'Shares Owned'}</p>
             <p style={{ color: C.dark, fontSize: 13, fontWeight: 700 }}>
@@ -433,20 +479,62 @@ function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, 
           </div>
         </div>
 
+        {/* Limit Price Input */}
+        {isBuy && orderType === 'limit' && (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ background: 'rgba(21,101,192,0.1)', border: '1px solid rgba(21,101,192,0.35)', borderRadius: 10, padding: '10px 12px', marginBottom: 12, fontSize: 11, color: '#1565C0', lineHeight: 1.5 }}>
+              🎯 Set your target price. We'll automatically buy when the stock reaches this price.
+              <br />
+              <span style={{ color: '#FF9800', fontWeight: 700 }}>Current price: {fmtINR(price)}</span>
+            </div>
+            <p style={{ fontSize: 11, color: C.muted, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Your Target Buy Price</p>
+            <div style={{ background: 'rgba(21,101,192,0.06)', border: '1.5px solid #1565C0', borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <span style={{ color: '#90CAF9', fontSize: 14 }}>₹</span>
+              <input
+                type="number"
+                value={limitPrice}
+                onChange={e => setLimitPrice(e.target.value)}
+                placeholder={price.toString()}
+                style={{ background: 'transparent', border: 'none', outline: 'none', color: C.dark, fontSize: 16, fontWeight: 700, width: '100%', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+              {[
+                { label: '-5%', value: (price * 0.95).toFixed(1) },
+                { label: '-3%', value: (price * 0.97).toFixed(1) },
+                { label: '-1%', value: (price * 0.99).toFixed(1) },
+                { label: 'Now',  value: price.toFixed(1) },
+              ].map(opt => (
+                <button
+                  key={opt.label}
+                  onClick={() => setLimitPrice(opt.value)}
+                  style={{ flex: 1, padding: '6px 4px', borderRadius: 8, border: `1px solid ${limitPrice == opt.value ? '#1565C0' : 'rgba(21,101,192,0.3)'}`, background: limitPrice == opt.value ? '#1565C0' : 'rgba(21,101,192,0.06)', color: limitPrice == opt.value ? '#fff' : '#1565C0', fontSize: 10, fontWeight: 600, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+                >
+                  {opt.label}
+                  <div style={{ fontSize: 9, opacity: 0.85, marginTop: 1 }}>₹{opt.value}</div>
+                </button>
+              ))}
+            </div>
+            <p style={{ fontSize: 10, color: C.muted, textAlign: 'center' }}>
+              ⏰ Valid today only (GTD) · Auto-expires at market close
+            </p>
+          </div>
+        )}
+
         {/* Qty stepper */}
         <p style={{ color: C.muted, fontSize: 10, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Quantity</p>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <button onClick={() => adjQty(-1)}
-            style={{ width: 44, height: 44, borderRadius: 12, background: '#F5F9F5', border: '1px solid #E8F5E9', fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.dark, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            style={{ width: 44, height: 44, borderRadius: 12, background: t.bgInput, border: `1px solid ${t.border}`, fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: C.dark, flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
             −
           </button>
           <input
             type="number" min="1" max={maxQty || 9999} value={qty}
             onChange={e => setQty(Math.max(1, Math.min(maxQty || 9999, parseInt(e.target.value) || 1)))}
-            style={{ flex: 1, textAlign: 'center', background: '#F5F9F5', border: '1px solid #C8E6C9', borderRadius: 12, padding: '10px 0', color: C.dark, fontSize: 20, fontWeight: 700, outline: 'none', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
+            style={{ flex: 1, textAlign: 'center', background: t.bgInput, border: `1px solid ${t.primaryBorder}`, borderRadius: 12, padding: '10px 0', color: C.dark, fontSize: 20, fontWeight: 700, outline: 'none', fontFamily: "'Plus Jakarta Sans', sans-serif" }}
           />
           <button onClick={() => adjQty(1)}
-            style={{ width: 44, height: 44, borderRadius: 12, background: isBuy ? C.green : C.red, border: 'none', fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            style={{ width: 44, height: 44, borderRadius: 12, background: orderType === 'limit' ? '#1565C0' : (isBuy ? C.green : C.red), border: 'none', fontSize: 22, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', flexShrink: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
             +
           </button>
         </div>
@@ -455,16 +543,16 @@ function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, 
         <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
           {[1, 5, 10, 25].map(n => (
             <button key={n} onClick={() => setQty(Math.min(maxQty || n, n))}
-              style={{ flex: 1, background: qty === n ? (isBuy ? '#E8F5E9' : '#FFEBEE') : '#F5F9F5', border: `1px solid ${qty === n ? (isBuy ? '#C8E6C9' : '#FFCDD2') : '#E0E0E0'}`, borderRadius: 10, padding: '7px 0', color: qty === n ? (isBuy ? C.greenDark : C.redDark) : C.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+              style={{ flex: 1, background: qty === n ? (isBuy ? t.successBg : t.dangerBg) : t.bgInput, border: `1px solid ${qty === n ? (isBuy ? t.successBorder : t.dangerBorder) : t.borderSubtle}`, borderRadius: 10, padding: '7px 0', color: qty === n ? (isBuy ? C.greenDark : C.redDark) : C.muted, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
               {n}
             </button>
           ))}
         </div>
 
         {/* Total */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: isBuy ? '#F0FBF0' : '#FFF0F0', borderRadius: 12, padding: '12px 16px', marginBottom: 16, border: `1px solid ${isBuy ? '#C8E6C9' : '#FFCDD2'}` }}>
-          <p style={{ color: C.muted, fontSize: 12 }}>Total Amount</p>
-          <p style={{ color: isBuy ? C.greenDark : C.redDark, fontSize: 16, fontWeight: 800 }}>{fmtINR(total)}</p>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: orderType === 'limit' ? 'rgba(21,101,192,0.08)' : (isBuy ? t.successBg : t.dangerBg), borderRadius: 12, padding: '12px 16px', marginBottom: 16, border: `1px solid ${orderType === 'limit' ? 'rgba(21,101,192,0.3)' : (isBuy ? t.successBorder : t.dangerBorder)}` }}>
+          <p style={{ color: C.muted, fontSize: 12 }}>{orderType === 'limit' ? 'Total if triggered' : 'Total Amount'}</p>
+          <p style={{ color: orderType === 'limit' ? '#1565C0' : (isBuy ? C.greenDark : C.redDark), fontSize: 16, fontWeight: 800 }}>{fmtINR(total)}</p>
         </div>
 
         {isBuy && total > balance && (
@@ -473,12 +561,22 @@ function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, 
 
         <button
           disabled={!canGo || isTrading}
-          onClick={() => canGo && !isTrading && onConfirm(qty)}
-          style={{ width: '100%', height: 54, borderRadius: 14, border: 'none', background: isBuy ? 'linear-gradient(135deg,#4CAF50,#43A047)' : 'linear-gradient(135deg,#F44336,#C62828)', color: '#fff', fontSize: 14, fontWeight: 800, cursor: !canGo || isTrading ? 'not-allowed' : 'pointer', opacity: !canGo || isTrading ? 0.5 : 1, fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: canGo && !isTrading ? (isBuy ? '0 4px 16px rgba(76,175,80,0.35)' : '0 4px 16px rgba(244,67,54,0.35)') : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
+          onClick={() => {
+            if (!canGo || isTrading) return
+            if (orderType === 'limit') {
+              onPlaceLimitOrder?.({ limitPrice: parseFloat(limitPrice), quantity: qty })
+            } else {
+              onConfirm(qty)
+            }
+          }}
+          style={{ width: '100%', height: 54, borderRadius: 14, border: 'none', background: !canGo || isTrading ? (orderType === 'limit' ? 'rgba(21,101,192,0.3)' : (isBuy ? '#A5D6A7' : '#EF9A9A')) : orderType === 'limit' ? '#1565C0' : (isBuy ? 'linear-gradient(135deg,#4CAF50,#43A047)' : 'linear-gradient(135deg,#F44336,#C62828)'), color: '#fff', fontSize: 14, fontWeight: 800, cursor: !canGo || isTrading ? 'not-allowed' : 'pointer', opacity: !canGo || isTrading ? 0.5 : 1, fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: canGo && !isTrading ? (orderType === 'limit' ? '0 4px 16px rgba(21,101,192,0.35)' : (isBuy ? '0 4px 16px rgba(76,175,80,0.35)' : '0 4px 16px rgba(244,67,54,0.35)')) : 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}
         >
           {isTrading ? (
             <><div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid rgba(255,255,255,0.4)', borderTopColor: '#fff', animation: 'spin 0.7s linear infinite' }} /> Processing...</>
-          ) : `Confirm ${mode} — ${fmtINR(total)}`}
+          ) : orderType === 'limit'
+            ? `🎯 Place Limit Order @ ${limitPrice ? fmtINR(parseFloat(limitPrice)) : '₹—'}`
+            : `Confirm ${mode} — ${fmtINR(total)}`
+          }
         </button>
       </div>
     </div>
@@ -487,6 +585,8 @@ function QuantityModal({ show, mode, stock, quote, balance, holding, onConfirm, 
 
 // ─────────────────────────────────────────────────────────────────────────────
 export default function TradePage() {
+  const { t } = useTheme()
+  const C = mkC(t)
   const navigate   = useNavigate()
   const location   = useLocation()
   const searchRef     = useRef(null)
@@ -543,6 +643,13 @@ export default function TradePage() {
   const [istTime,           setIstTime]           = useState('')
   const refreshIntervalRef = useRef(null)
 
+  // ── Intraday state ───────────────────────────────────────────────────────────
+  const [tradeType,          setTradeType]          = useState('delivery')
+  const [intradayPositions,  setIntradayPositions]  = useState([])
+  const squareOffWarnedRef   = useRef(false)
+  const squareOffExecutedRef = useRef(false)
+  const [limitOrders, setLimitOrders] = useState([])
+
   // ── CSS injection ────────────────────────────────────────────────────────────
   useEffect(() => {
     if (document.getElementById('tb-trade-styles')) return
@@ -578,6 +685,61 @@ export default function TradePage() {
     return () => clearInterval(id)
   }, [])
 
+  // ── Intraday auto square-off + 3:10 PM warning ───────────────────────────────
+  useEffect(() => {
+    if (!userId) return
+    const id = setInterval(async () => {
+      const ist = getISTTime()
+      const h   = ist.getHours()
+      const m   = ist.getMinutes()
+
+      // 3:10 PM — 10-minute warning
+      if (h === 15 && m >= 10 && m < 20 && !squareOffWarnedRef.current) {
+        const today = new Date().toISOString().split('T')[0]
+        const { data } = await supabase
+          .from('intraday_positions').select('id')
+          .eq('user_id', userId).eq('status', 'open').gte('created_at', today)
+        if (data?.length > 0) {
+          squareOffWarnedRef.current = true
+          toast('⚠️ 10 minutes to square-off! Close intraday positions manually or they auto-close at 3:20 PM',
+            { duration: 10000, icon: '⏰' })
+        }
+      }
+
+      // 3:20 PM — auto square-off
+      if (h === 15 && m >= 20 && !squareOffExecutedRef.current) {
+        squareOffExecutedRef.current = true
+        await squareOffAllIntraday()
+      }
+    }, 60000)
+    return () => clearInterval(id)
+  }, [userId])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Limit order monitoring — check every 15s during market hours ────────────
+  useEffect(() => {
+    if (!userId) return
+    const id = setInterval(async () => {
+      const ist = getISTTime()
+      const h = ist.getHours(), m = ist.getMinutes()
+      const isOpen = (h > 9 || (h === 9 && m >= 15)) && (h < 15 || (h === 15 && m <= 30))
+      if (!isOpen) return
+
+      const { data: orders } = await supabase
+        .from('price_alerts').select('*')
+        .eq('user_id', userId).eq('alert_type', 'LIMIT_BUY').eq('status', 'active')
+      if (!orders?.length) return
+
+      for (const order of orders) {
+        const livePrice = await fetchLivePrice(order.symbol)
+        if (!livePrice) continue
+        if (livePrice <= order.trigger_price) {
+          await executeLimitBuy(order, livePrice)
+        }
+      }
+    }, 15000)
+    return () => clearInterval(id)
+  }, [userId])  // eslint-disable-line react-hooks/exhaustive-deps
+
   // ── Auto-refresh quote every 30s when market is open ─────────────────────────
   useEffect(() => {
     if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current)
@@ -605,6 +767,8 @@ export default function TradePage() {
       const { data: profile } = await supabase.from('profiles').select('virtual_balance').eq('id', user.id).single()
       if (profile) setBalance(profile.virtual_balance)
       await loadHoldings(user.id)
+      await fetchIntradayPositions(user.id)
+      await fetchLimitOrders(user.id)
       setPageLoading(false)
     }
     init()
@@ -680,6 +844,238 @@ export default function TradePage() {
       })
     )
     setLiveQuotes(prev => ({ ...prev, ...quotes }))
+  }
+
+  // ── fetchIntradayPositions ────────────────────────────────────────────────────
+  const fetchIntradayPositions = async (uid = userId) => {
+    if (!uid) return
+    const today = new Date().toISOString().split('T')[0]
+    const { data } = await supabase
+      .from('intraday_positions')
+      .select('*')
+      .eq('user_id', uid)
+      .eq('status', 'open')
+      .gte('created_at', today)
+    setIntradayPositions(data || [])
+  }
+
+  // ── fetchLimitOrders ──────────────────────────────────────────────────────────
+  const fetchLimitOrders = async (uid = userId) => {
+    if (!uid) return
+    const { data } = await supabase
+      .from('price_alerts')
+      .select('*')
+      .eq('user_id', uid)
+      .eq('alert_type', 'LIMIT_BUY')
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+    setLimitOrders(data ?? [])
+  }
+
+  // ── fetchLivePrice — single quote via edge function ───────────────────────────
+  const fetchLivePrice = async (symbol) => {
+    try {
+      const { data } = await supabase.functions.invoke('stock-data', {
+        body: { symbol, type: 'quote' },
+      })
+      return data?.quote?.c > 0 ? data.quote.c : null
+    } catch {
+      return null
+    }
+  }
+
+  // ── executeLimitBuy — runs when live price <= trigger price ───────────────────
+  const executeLimitBuy = async (order, executedPrice) => {
+    try {
+      const sym = order.symbol.includes('.NS') ? order.symbol : order.symbol + '.NS'
+      const totalCost = parseFloat((executedPrice * order.quantity).toFixed(2))
+
+      const { data: existing } = await supabase
+        .from('holdings').select('*')
+        .eq('user_id', order.user_id).eq('symbol', sym).maybeSingle()
+
+      if (existing) {
+        const newQty = existing.quantity + order.quantity
+        const newAvg = parseFloat(((existing.avg_price * existing.quantity + executedPrice * order.quantity) / newQty).toFixed(2))
+        await supabase.from('holdings').update({
+          quantity: newQty, avg_price: newAvg, total_invested: parseFloat((newQty * newAvg).toFixed(2)),
+          updated_at: new Date().toISOString(),
+        }).eq('id', existing.id)
+      } else {
+        await supabase.from('holdings').insert({
+          user_id: order.user_id, symbol: sym,
+          company_name: order.symbol,
+          quantity: order.quantity, avg_price: executedPrice, total_invested: totalCost,
+        })
+      }
+
+      // Refund difference if executed below reserved price
+      const reserved = parseFloat((order.trigger_price * order.quantity).toFixed(2))
+      const refund   = parseFloat((reserved - totalCost).toFixed(2))
+      if (refund > 0) {
+        const { data: prof } = await supabase.from('profiles').select('virtual_balance').eq('id', userId).single()
+        const newBal = parseFloat(((prof?.virtual_balance ?? 0) + refund).toFixed(2))
+        await supabase.from('profiles').update({ virtual_balance: newBal }).eq('id', userId)
+        setBalance(newBal)
+        localStorage.setItem('tb_balance', newBal.toString())
+      }
+
+      await supabase.from('trades').insert({
+        user_id: order.user_id, symbol: sym,
+        trade_type: 'BUY', trade_mode: 'limit',
+        quantity: order.quantity, price: executedPrice, total_amount: totalCost,
+      })
+
+      await supabase.from('price_alerts').update({
+        status: 'triggered', current_price: executedPrice,
+      }).eq('id', order.id)
+
+      toast.success(
+        `🎯 Limit order executed! Bought ${order.quantity} ${order.symbol} @ ${fmtINR(executedPrice)}`,
+        { duration: 6000 }
+      )
+
+      await loadHoldings(userId)
+      await fetchLimitOrders()
+      localStorage.setItem('portfolio_needs_refresh', 'true')
+    } catch (err) {
+      console.error('[Limit buy execute] ✖', err.message)
+    }
+  }
+
+  // ── placeLimitOrder — called from QuantityModal ────────────────────────────────
+  const placeLimitOrder = async ({ limitPrice, quantity }) => {
+    if (!limitPrice || limitPrice <= 0) { toast.error('Enter a valid limit price'); return }
+    if (!quantity || quantity <= 0)     { toast.error('Enter a valid quantity'); return }
+    const totalCost = parseFloat((limitPrice * quantity).toFixed(2))
+    if (totalCost > balance)            { toast.error('Insufficient balance for this order'); return }
+    setIsTrading(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      const { error } = await supabase.from('price_alerts').insert({
+        user_id:       user.id,
+        symbol:        selectedStock.displaySymbol,
+        alert_type:    'LIMIT_BUY',
+        trigger_price: limitPrice,
+        quantity,
+        status:        'active',
+        current_price: quote?.c ?? limitPrice,
+        notes:         `Limit buy ${quantity} shares of ${selectedStock.displaySymbol} at ₹${limitPrice}`,
+      })
+      if (error) throw error
+
+      const newBalance = parseFloat((balance - totalCost).toFixed(2))
+      await supabase.from('profiles').update({ virtual_balance: newBalance }).eq('id', user.id)
+      setBalance(newBalance)
+      localStorage.setItem('tb_balance', newBalance.toString())
+      await fetchLimitOrders(user.id)
+      setShowModal(false)
+      toast.success(
+        `🎯 Limit order placed! Will buy ${quantity} ${selectedStock.displaySymbol} when price hits ${fmtINR(limitPrice)}`,
+        { duration: 4000 }
+      )
+    } catch (err) {
+      toast.error('Failed to place limit order')
+      console.error(err)
+    } finally {
+      setIsTrading(false)
+    }
+  }
+
+  // ── cancelLimitOrder — refunds reserved balance ───────────────────────────────
+  const cancelLimitOrder = async (order) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      await supabase.from('price_alerts').update({ status: 'cancelled' }).eq('id', order.id)
+      const refundAmount = parseFloat((order.trigger_price * order.quantity).toFixed(2))
+      const newBalance   = parseFloat((balance + refundAmount).toFixed(2))
+      await supabase.from('profiles').update({ virtual_balance: newBalance }).eq('id', user.id)
+      setBalance(newBalance)
+      localStorage.setItem('tb_balance', newBalance.toString())
+      await fetchLimitOrders(user.id)
+      toast('Order cancelled — balance refunded ✅')
+    } catch (err) {
+      toast.error('Could not cancel order')
+      console.error(err)
+    }
+  }
+
+  // ── squareOffAllIntraday — auto-close at 3:20 PM IST ─────────────────────────
+  const squareOffAllIntraday = async () => {
+    if (!userId) return
+    try {
+      const today = new Date().toISOString().split('T')[0]
+      const { data: openPos } = await supabase
+        .from('intraday_positions')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('status', 'open')
+        .gte('created_at', today)
+      if (!openPos?.length) return
+
+      const { data: prof } = await supabase
+        .from('profiles').select('virtual_balance').eq('id', userId).single()
+      let runningBal = prof?.virtual_balance ?? balance
+
+      for (const pos of openPos) {
+        const sym = pos.symbol + '.NS'
+        const cp  = liveQuotes[sym] ?? pos.buy_price
+        const pnl = parseFloat(((cp - pos.buy_price) * pos.quantity).toFixed(2))
+        const ret = parseFloat((cp * pos.quantity).toFixed(2))
+        runningBal = parseFloat((runningBal + ret).toFixed(2))
+
+        await supabase.from('intraday_positions').update({
+          status: 'squared_off', squared_off_price: cp,
+          squared_off_at: new Date().toISOString(), profit_loss: pnl, current_price: cp,
+        }).eq('id', pos.id)
+
+        await supabase.from('trades').insert({
+          user_id: userId, symbol: sym, company_name: pos.symbol,
+          trade_type: 'SELL', trade_mode: 'intraday',
+          quantity: pos.quantity, price: cp, total_amount: ret, profit_loss: pnl,
+        })
+      }
+      await supabase.from('profiles').update({ virtual_balance: runningBal }).eq('id', userId)
+      setBalance(runningBal)
+      localStorage.setItem('tb_balance', runningBal.toString())
+      localStorage.setItem('portfolio_needs_refresh', 'true')
+      setIntradayPositions([])
+      toast('⚡ Intraday positions squared off at 3:20 PM IST', { icon: '🔔', duration: 5000 })
+    } catch (err) {
+      console.error('[Square-off] ✖', err.message)
+    }
+  }
+
+  // ── handleManualSquareOff — user taps "Square Off" button ────────────────────
+  const handleManualSquareOff = async (pos) => {
+    if (!userId) return
+    const sym = pos.symbol + '.NS'
+    const cp  = liveQuotes[sym] ?? quote?.c ?? pos.buy_price
+    const pnl = parseFloat(((cp - pos.buy_price) * pos.quantity).toFixed(2))
+    const ret = parseFloat((cp * pos.quantity).toFixed(2))
+    const newBalance = parseFloat((balance + ret).toFixed(2))
+    try {
+      await supabase.from('intraday_positions').update({
+        status: 'manual_sell', squared_off_price: cp,
+        squared_off_at: new Date().toISOString(), profit_loss: pnl, current_price: cp,
+      }).eq('id', pos.id)
+      await supabase.from('profiles').update({ virtual_balance: newBalance }).eq('id', userId)
+      await supabase.from('trades').insert({
+        user_id: userId, symbol: sym, company_name: pos.symbol,
+        trade_type: 'SELL', trade_mode: 'intraday',
+        quantity: pos.quantity, price: cp, total_amount: ret, profit_loss: pnl,
+      })
+      setBalance(newBalance)
+      localStorage.setItem('tb_balance', newBalance.toString())
+      localStorage.setItem('portfolio_needs_refresh', 'true')
+      await fetchIntradayPositions()
+      pnl >= 0
+        ? toast.success(`⚡ Squared off! Profit: ${fmtINR(pnl)} 🎉`)
+        : toast(`⚡ Squared off. Loss: ${fmtINR(Math.abs(pnl))}`, { icon: '📉' })
+    } catch (err) {
+      console.error('[Manual square-off] ✖', err.message)
+      toast.error('Square-off failed')
+    }
   }
 
   // ── fetchQuote — Google Finance (primary) → Yahoo Finance (fallback) ──────────
@@ -852,6 +1248,42 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
     const totalCost = parseFloat((qty * price).toFixed(2))
     if (totalCost > balance) { toast.error('Insufficient balance!'); return }
     setIsTrading(true)
+
+    // ── INTRADAY BUY ──────────────────────────────────────────────────────────
+    if (tradeType === 'intraday') {
+      if (!marketStatus.isOpen) {
+        toast.error('⚡ Intraday trading is only available 9:15 AM – 3:20 PM IST')
+        setIsTrading(false)
+        return
+      }
+      try {
+        const newBalance = parseFloat((balance - totalCost).toFixed(2))
+        await supabase.from('profiles').update({ virtual_balance: newBalance }).eq('id', userId)
+        await supabase.from('intraday_positions').insert({
+          user_id: userId, symbol: selectedStock.displaySymbol,
+          quantity: qty, buy_price: price, current_price: price, status: 'open',
+        })
+        await supabase.from('trades').insert({
+          user_id: userId, symbol: selectedStock.symbol,
+          company_name: selectedStock.description, trade_type: 'BUY',
+          trade_mode: 'intraday', quantity: qty, price, total_amount: totalCost,
+        })
+        setBalance(newBalance)
+        localStorage.setItem('tb_balance', newBalance.toString())
+        localStorage.setItem('tb_balance_updated', Date.now().toString())
+        await fetchIntradayPositions(userId)
+        setShowModal(false)
+        await updateLeaderboard()
+        toast.success(`⚡ Intraday opened! ${qty} × ${selectedStock.displaySymbol} @ ${fmtINR(price)} — Auto square-off at 3:20 PM IST`)
+      } catch (err) {
+        console.error(err); toast.error('Something went wrong!')
+      } finally {
+        setIsTrading(false)
+      }
+      return
+    }
+
+    // ── DELIVERY BUY ─────────────────────────────────────────────────────────
     try {
       const newBalance = parseFloat((balance - totalCost).toFixed(2))
       await supabase.from('profiles').update({ virtual_balance: newBalance }).eq('id', userId)
@@ -1133,8 +1565,8 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
   const logoStyle = LOGO_STYLES[Math.max(stockIdx, 0) % LOGO_STYLES.length]
 
   if (pageLoading) return (
-    <div style={{ background: C.bg, minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <div style={{ width: 28, height: 28, borderRadius: '50%', border: '3px solid #E8F5E9', borderTopColor: C.green, animation: 'spin 0.8s linear infinite' }} />
+    <div style={{ background: t.bgPrimary, minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 28, height: 28, borderRadius: '50%', border: `3px solid ${t.border}`, borderTopColor: t.primary, animation: 'spin 0.8s linear infinite' }} />
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
@@ -1145,8 +1577,8 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
       <div style={{ width: '100%', maxWidth: 430, paddingBottom: 130 }}>
 
         {/* ── HEADER ──────────────────────────────────────────────────────────── */}
-        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: '1px solid #EBF5EB', background: '#FFFFFF', position: 'sticky', top: 0, zIndex: 20, boxShadow: '0 1px 8px rgba(0,0,0,0.04)', gap: 10 }}>
-          <button onClick={() => navigate('/home')} style={{ background: '#F5F9F5', border: '1px solid #E8F5E9', borderRadius: 10, padding: '5px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', padding: '10px 14px', borderBottom: `1px solid ${t.headerBorder}`, background: t.headerBg, position: 'sticky', top: 0, zIndex: 20, boxShadow: '0 1px 8px rgba(0,0,0,0.04)', gap: 10 }}>
+          <button onClick={() => navigate('/home')} style={{ background: t.bgInput, border: `1px solid ${t.border}`, borderRadius: 10, padding: '5px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
             <ChevronLeft size={16} color={C.dark} />
           </button>
           <p style={{ flex: 1, textAlign: 'center', color: C.dark, fontSize: 15, fontWeight: 700 }}>Trade</p>
@@ -1181,19 +1613,19 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                   }
                 } catch { toast.error('Could not update watchlist') }
               }}
-              style={{ background: isWatchlisted ? '#FFF8E1' : '#F5F9F5', border: `1px solid ${isWatchlisted ? '#FFE082' : '#E8F5E9'}`, borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}
+              style={{ background: isWatchlisted ? t.warningBg : t.bgInput, border: `1px solid ${isWatchlisted ? t.warningBorder : t.border}`, borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}
             >
               <Star size={14} color={isWatchlisted ? '#FBB040' : C.muted} fill={isWatchlisted ? '#FBB040' : 'none'} />
             </button>
-            <button style={{ background: '#F5F9F5', border: '1px solid #E8F5E9', borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}>
+            <button style={{ background: t.bgInput, border: `1px solid ${t.border}`, borderRadius: 10, padding: '5px 6px', cursor: 'pointer', display: 'flex' }}>
               <Bell size={14} color={C.muted} />
             </button>
           </div>
         </div>
 
         {/* ── SEARCH ──────────────────────────────────────────────────────────── */}
-        <div ref={searchRef} style={{ padding: '10px 12px', borderBottom: '1px solid #F0F0F0', position: 'relative', background: '#FFFFFF' }}>
-          <div style={{ display: 'flex', alignItems: 'center', background: '#F5F9F5', border: `1px solid ${searchFocused ? '#4CAF50' : '#E0EDE0'}`, borderRadius: 14, padding: '10px 14px', gap: 8, transition: 'border-color 0.2s' }}>
+        <div ref={searchRef} style={{ padding: '10px 12px', borderBottom: `1px solid ${t.borderSubtle}`, position: 'relative', background: t.headerBg }}>
+          <div style={{ display: 'flex', alignItems: 'center', background: t.bgInput, border: `1px solid ${searchFocused ? t.primary : t.borderInput}`, borderRadius: 14, padding: '10px 14px', gap: 8, transition: 'border-color 0.2s' }}>
             <Search size={14} color={C.muted} style={{ flexShrink: 0 }} />
             <input
               type="text" value={searchQuery}
@@ -1219,7 +1651,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
             )}
           </div>
           {showDropdown && (searchResults.length > 0 || isSearching) && (
-            <div style={{ position: 'absolute', top: 'calc(100% - 2px)', left: 12, right: 12, background: '#FFFFFF', border: '1px solid #E8F5E9', borderRadius: 14, maxHeight: 280, overflowY: 'auto', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
+            <div style={{ position: 'absolute', top: 'calc(100% - 2px)', left: 12, right: 12, background: t.bgCard, border: `1px solid ${t.border}`, borderRadius: 14, maxHeight: 280, overflowY: 'auto', zIndex: 50, boxShadow: '0 8px 24px rgba(0,0,0,0.10)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px 4px' }}>
                 <p style={{ color: C.muted, fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                   {searchQuery.trim() ? `Results for "${searchQuery.trim()}"` : 'Popular Stocks'}
@@ -1231,8 +1663,8 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                 const initials = (r.displaySymbol ?? r.symbol.replace('.NS','')).slice(0, 2).toUpperCase()
                 return (
                   <div key={r.symbol} onClick={() => selectStock(r)}
-                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < searchResults.length - 1 ? '1px solid #F5F5F5' : 'none', cursor: 'pointer' }}
-                    onMouseEnter={e => (e.currentTarget.style.background = '#F0FBF0')}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < searchResults.length - 1 ? `1px solid ${t.borderSubtle}` : 'none', cursor: 'pointer' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = t.bgHover)}
                     onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <div style={{ width: 36, height: 36, borderRadius: 10, background: ls.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ls.fg, fontWeight: 800, fontSize: 10, flexShrink: 0 }}>{initials}</div>
@@ -1241,7 +1673,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                         <p style={{ color: C.muted, fontSize: 10 }}>{r.description}</p>
                       </div>
                     </div>
-                    <span style={{ background: '#E8F5E9', color: C.greenDark, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                    <span style={{ background: t.primaryLight, color: C.greenDark, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
                       {r.exchange ?? 'NSE'}
                     </span>
                   </div>
@@ -1285,18 +1717,18 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                     {fmtINR(quote.c)}
                   </p>
                   {marketStatus.isOpen && (
-                    <div style={{ background: '#E8F5E9', border: '1px solid #4CAF50', borderRadius: 6, padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
-                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#4CAF50', animation: 'pulse-dot 1s infinite' }} />
-                      <span style={{ color: '#2E7D32', fontSize: 9, fontWeight: 800 }}>LIVE</span>
+                    <div style={{ background: t.successBg, border: `1px solid ${t.primary}`, borderRadius: 6, padding: '2px 8px', display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <div style={{ width: 6, height: 6, borderRadius: '50%', background: t.primary, animation: 'pulse-dot 1s infinite' }} />
+                      <span style={{ color: C.greenDark, fontSize: 9, fontWeight: 800 }}>LIVE</span>
                     </div>
                   )}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ background: isUp ? '#E8F5E9' : '#FFEBEE', color: isUp ? C.greenDark : C.redDark, border: `1px solid ${isUp ? '#C8E6C9' : '#FFCDD2'}`, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ background: isUp ? t.successBg : t.dangerBg, color: isUp ? C.greenDark : C.redDark, border: `1px solid ${isUp ? t.successBorder : t.dangerBorder}`, fontSize: 12, fontWeight: 700, padding: '5px 12px', borderRadius: 20, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                     {isUp ? '▲' : '▼'} {isUp ? '+' : ''}₹{Math.abs(quote.d ?? 0).toFixed(0)} ({isUp ? '+' : ''}{(quote.dp ?? 0).toFixed(2)}%)
                   </span>
                   {quote?.source && (
-                    <span style={{ background: '#F0F9F0', border: '1px solid #C8E6C9', borderRadius: 4, padding: '1px 6px', color: '#2E7D32', fontSize: 8, fontWeight: 700 }}>
+                    <span style={{ background: t.primaryLight, border: `1px solid ${t.primaryBorder}`, borderRadius: 4, padding: '1px 6px', color: C.greenDark, fontSize: 8, fontWeight: 700 }}>
                       {quote.source === 'google' ? '📊 Google Finance'
                         : quote.source === 'yahoo' ? '📈 Yahoo Finance'
                         : '💾 Cached'}
@@ -1304,9 +1736,9 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                   )}
                 </div>
                 {!marketStatus.isOpen && (
-                  <div style={{ background: '#FFF8E1', border: '1px solid #FFE082', borderRadius: 8, padding: '6px 10px', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <div style={{ background: t.warningBg, border: `1px solid ${t.warningBorder}`, borderRadius: 8, padding: '6px 10px', marginTop: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
                     <span style={{ fontSize: 12 }}>⏰</span>
-                    <span style={{ color: '#E65100', fontSize: 10, fontWeight: 700 }}>{getCountdownToOpen() || 'Market Closed'}</span>
+                    <span style={{ color: t.warning, fontSize: 10, fontWeight: 700 }}>{getCountdownToOpen() || 'Market Closed'}</span>
                     <span style={{ color: '#888', fontSize: 10, marginLeft: 'auto' }}>Last: {fmtINR(quote.c)}</span>
                   </div>
                 )}
@@ -1321,13 +1753,52 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
               { label: 'Low',    value: quote ? fmtINR(quote.l) : '—', color: C.red   },
               { label: 'Volume', value: quote ? fmtVolume(quote.v) : '—', color: C.dark },
             ].map(stat => (
-              <div key={stat.label} style={{ background: '#F8FFF8', border: '1px solid #E8F5E9', borderRadius: 12, padding: '8px 10px', textAlign: 'center' }}>
+              <div key={stat.label} style={{ background: t.bgInput, border: `1px solid ${t.border}`, borderRadius: 12, padding: '8px 10px', textAlign: 'center' }}>
                 <p style={{ color: C.muted, fontSize: 8, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stat.label}</p>
                 {isLoadingQuote ? <Shimmer h={10} /> : <p style={{ color: stat.color, fontSize: 11, fontWeight: 700 }}>{stat.value}</p>}
               </div>
             ))}
           </div>
         </div>
+
+        {/* ── TRADE TYPE TOGGLE ──────────────────────────────────────────────── */}
+        <div style={{ display: 'flex', background: t.bgInput, borderRadius: 10, padding: 3, margin: '10px 12px 0', border: `1px solid ${t.border}` }}>
+          <button
+            onClick={() => setTradeType('intraday')}
+            style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: tradeType === 'intraday' ? '#E65100' : 'transparent', color: tradeType === 'intraday' ? '#fff' : C.muted, transition: 'all 0.2s', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+          >
+            ⚡ Intraday
+          </button>
+          <button
+            onClick={() => setTradeType('delivery')}
+            style={{ flex: 1, padding: '8px', borderRadius: 8, border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', background: tradeType === 'delivery' ? C.green : 'transparent', color: tradeType === 'delivery' ? '#fff' : C.muted, transition: 'all 0.2s', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+          >
+            📦 Delivery
+          </button>
+        </div>
+
+        {/* ── INTRADAY INFO BANNER ────────────────────────────────────────────── */}
+        {tradeType === 'intraday' && (
+          <div style={{ margin: '8px 12px 0', background: '#FFF3E0', border: '1px solid #FFB74D', borderRadius: 10, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 16, flexShrink: 0 }}>⚡</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: '#E65100' }}>
+                Intraday — Auto square-off at 3:20 PM IST
+              </div>
+              <div style={{ fontSize: 10, color: '#BF360C', marginTop: 1 }}>
+                {marketStatus.isOpen
+                  ? 'Position auto-closes if not sold before market close'
+                  : '⚡ Intraday available 9:15 AM – 3:20 PM IST only'}
+              </div>
+            </div>
+            {marketStatus.isOpen && (
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <div style={{ fontSize: 9, color: '#E65100', fontWeight: 600 }}>Time left</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: '#BF360C' }}>{getTimeToSquareOff()}</div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ── CHART SECTION ───────────────────────────────────────────────────── */}
         <div style={{ margin: '10px 12px 0', background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 8px rgba(0,0,0,0.04)', padding: '12px 14px 10px' }}>
@@ -1336,7 +1807,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
           <div style={{ display: 'flex', gap: 5, marginBottom: 10 }}>
             {['1D', '1W', '1M', '3M', '1Y'].map(p => (
               <button key={p} onClick={() => setActivePeriod(p)}
-                style={{ padding: '4px 11px', borderRadius: 20, fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer', background: activePeriod === p ? C.green : '#F0F9F0', color: activePeriod === p ? '#fff' : C.muted, fontFamily: "'Plus Jakarta Sans',sans-serif", transition: 'all 0.2s' }}>
+                style={{ padding: '4px 11px', borderRadius: 20, fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer', background: activePeriod === p ? t.primary : t.bgInput, color: activePeriod === p ? '#fff' : C.muted, fontFamily: "'Plus Jakarta Sans',sans-serif", transition: 'all 0.2s' }}>
                 {p}
               </button>
             ))}
@@ -1357,7 +1828,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
           {/* recharts area chart */}
           {isLoadingChart ? (
             <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
-              <div style={{ width: 14, height: 14, borderRadius: '50%', border: '2px solid #E8F5E9', borderTopColor: C.green, animation: 'spin 0.8s linear infinite' }} />
+              <div style={{ width: 14, height: 14, borderRadius: '50%', border: `2px solid ${t.border}`, borderTopColor: t.primary, animation: 'spin 0.8s linear infinite' }} />
               <span style={{ color: C.muted, fontSize: 12 }}>Loading chart...</span>
             </div>
           ) : chartData.length > 0 ? (
@@ -1487,7 +1958,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
         <div style={{ margin: '10px 12px 0', background: C.card, borderRadius: 20, border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 8px rgba(0,0,0,0.04)' }}>
 
           {/* Tab bar */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #F0F0F0' }}>
+          <div style={{ display: 'flex', borderBottom: `1px solid ${t.borderSubtle}` }}>
             {TABS.map(tab => (
               <button key={tab} onClick={() => handleTabChange(tab)}
                 style={{ flex: 1, padding: '11px 4px', border: 'none', background: 'transparent', borderBottom: activeTab === tab ? `2px solid ${C.green}` : '2px solid transparent', color: activeTab === tab ? C.greenDark : C.muted, fontSize: 10, fontWeight: activeTab === tab ? 700 : 500, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans',sans-serif", transition: 'all 0.2s' }}>
@@ -1513,7 +1984,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                   ['Volume',       quote ? fmtVolume(quote.v) : '—'],
                   ['Your Holdings', holding ? `${holding.quantity} shares @ ${fmtINR(holding.avg_price)}` : 'None'],
                 ].map(([label, value]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: '1px solid #F5F5F5', marginBottom: 9 }}>
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: `1px solid ${t.borderSubtle}`, marginBottom: 9 }}>
                     <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
                     <span style={{ color: C.dark, fontSize: 11, fontWeight: 600, textAlign: 'right', maxWidth: '60%' }}>{value}</span>
                   </div>
@@ -1537,10 +2008,10 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                 ) : news.map((article, i) => {
                   const sentiment = getSentiment(article.headline)
                   const sColor = sentiment === 'Positive' ? C.greenDark : sentiment === 'Negative' ? C.redDark : C.muted
-                  const sBg    = sentiment === 'Positive' ? '#E8F5E9' : sentiment === 'Negative' ? '#FFEBEE' : '#F5F5F5'
+                  const sBg    = sentiment === 'Positive' ? t.successBg : sentiment === 'Negative' ? t.dangerBg : t.bgInput
                   const sEmoji = sentiment === 'Positive' ? '😊' : sentiment === 'Negative' ? '😟' : '😐'
                   return (
-                    <div key={i} style={{ paddingBottom: 12, borderBottom: i < news.length - 1 ? '1px solid #F0F0F0' : 'none', marginBottom: 12 }}>
+                    <div key={i} style={{ paddingBottom: 12, borderBottom: i < news.length - 1 ? `1px solid ${t.borderSubtle}` : 'none', marginBottom: 12 }}>
                       <p style={{ color: C.dark, fontSize: 12, fontWeight: 600, lineHeight: 1.5, marginBottom: 6 }}>{article.headline}</p>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <span style={{ background: sBg, color: sColor, border: `1px solid ${sBg}`, fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 20 }}>{sEmoji} {sentiment}</span>
@@ -1561,7 +2032,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                     {[1, 2, 3, 4, 5].map(i => <Shimmer key={i} w={i % 2 === 0 ? '80%' : '100%'} h={11} />)}
                   </div>
                 ) : analysisText ? (
-                  <div style={{ background: '#F8FAF8', borderRadius: 12, padding: 12 }}>
+                  <div style={{ background: t.bgPrimary, borderRadius: 12, padding: 12 }}>
                     {analysisText.split('\n').filter(l => l.trim()).map((line, i) => (
                       <p key={i} style={{ color: C.dark, fontSize: 12, lineHeight: 1.7, marginBottom: 4 }}>{line}</p>
                     ))}
@@ -1592,7 +2063,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                   ['Market Hours',   '9:15 AM – 3:30 PM IST'],
                   ['Settlement',     'T+1 Rolling Settlement'],
                 ].map(([label, value]) => (
-                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: '1px solid #F5F5F5', marginBottom: 9 }}>
+                  <div key={label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingBottom: 9, borderBottom: `1px solid ${t.borderSubtle}`, marginBottom: 9 }}>
                     <span style={{ color: C.muted, fontSize: 11 }}>{label}</span>
                     <span style={{ color: C.dark, fontSize: 11, fontWeight: 600 }}>{value}</span>
                   </div>
@@ -1634,9 +2105,9 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                     setQuantity(1)
                     window.scrollTo({ top: 0, behavior: 'smooth' })
                   }}
-                  style={{ background: '#FFFFFF', border: '1px solid #F0F0F0', borderRadius: 16, padding: '12px 14px', marginBottom: 6, cursor: 'pointer', transition: 'border-color 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
-                  onMouseEnter={e => (e.currentTarget.style.borderColor = '#C8E6C9')}
-                  onMouseLeave={e => (e.currentTarget.style.borderColor = '#F0F0F0')}>
+                  style={{ background: t.bgCard, border: `1px solid ${t.borderSubtle}`, borderRadius: 16, padding: '12px 14px', marginBottom: 6, cursor: 'pointer', transition: 'border-color 0.15s', boxShadow: '0 1px 4px rgba(0,0,0,0.04)' }}
+                  onMouseEnter={e => (e.currentTarget.style.borderColor = t.primaryBorder)}
+                  onMouseLeave={e => (e.currentTarget.style.borderColor = t.borderSubtle)}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <div style={{ width: 30, height: 30, borderRadius: 9, background: ls.bg, display: 'flex', alignItems: 'center', justifyContent: 'center', color: ls.fg, fontSize: 9, fontWeight: 700, flexShrink: 0 }}>{h.symbol.slice(0, 2)}</div>
@@ -1646,10 +2117,107 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <p style={{ color: C.muted, fontSize: 9 }}>{h.quantity} shares · Avg {fmtINR(h.avg_price)}</p>
-                    <span style={{ background: isProfit ? C.greenBg : C.redBg, color: isProfit ? C.greenDark : C.redDark, border: `1px solid ${isProfit ? '#C8E6C9' : '#FFCDD2'}`, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                    <span style={{ background: isProfit ? t.successBg : t.dangerBg, color: isProfit ? C.greenDark : C.redDark, border: `1px solid ${isProfit ? t.successBorder : t.dangerBorder}`, fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
                       {isProfit ? '+' : ''}{fmtINR(Math.abs(pnl))} ({isProfit ? '+' : ''}{pnlPct}%)
                     </span>
                   </div>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── MY INTRADAY POSITIONS ───────────────────────────────────────────── */}
+        {intradayPositions.length > 0 && (
+          <div style={{ padding: '14px 12px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <p style={{ color: C.dark, fontSize: 12, fontWeight: 700 }}>⚡ Intraday Positions Today</p>
+              <span style={{ background: '#FFF3E0', color: '#E65100', border: '1px solid #FFB74D', fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                {getTimeToSquareOff()}
+              </span>
+            </div>
+            {intradayPositions.map((pos) => {
+              const lp      = liveQuotes[pos.symbol + '.NS'] ?? pos.buy_price
+              const pnl     = parseFloat(((lp - pos.buy_price) * pos.quantity).toFixed(2))
+              const pnlPct  = ((lp - pos.buy_price) / pos.buy_price * 100).toFixed(2)
+              const isProfit = pnl >= 0
+              return (
+                <div key={pos.id} style={{ background: t.bgCard, border: '1px solid #FFB74D', borderLeft: '3px solid #E65100', borderRadius: 12, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(230,81,0,0.08)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ width: 32, height: 32, borderRadius: 9, background: '#FFF3E0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#E65100', fontSize: 10, fontWeight: 800, flexShrink: 0 }}>
+                        {pos.symbol.slice(0, 2)}
+                      </div>
+                      <div>
+                        <p style={{ color: C.dark, fontSize: 12, fontWeight: 700 }}>{pos.symbol}</p>
+                        <p style={{ color: C.muted, fontSize: 9 }}>{pos.quantity} shares · Avg {fmtINR(pos.buy_price)}</p>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ color: C.dark, fontSize: 12, fontWeight: 700 }}>{fmtINR(lp * pos.quantity)}</p>
+                      <span style={{ background: isProfit ? t.successBg : t.dangerBg, color: isProfit ? C.greenDark : C.redDark, border: `1px solid ${isProfit ? t.successBorder : t.dangerBorder}`, fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 5 }}>
+                        {isProfit ? '+' : ''}{fmtINR(Math.abs(pnl))} ({isProfit ? '+' : ''}{pnlPct}%)
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleManualSquareOff(pos)}
+                    style={{ width: '100%', padding: '7px', borderRadius: 8, border: '1px solid #FFB74D', background: '#FFF3E0', color: '#E65100', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+                  >
+                    ⚡ Square Off Now
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
+
+        {/* ── PENDING LIMIT ORDERS ────────────────────────────────────────────── */}
+        {limitOrders.length > 0 && (
+          <div style={{ padding: '14px 12px 0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <p style={{ color: C.dark, fontSize: 12, fontWeight: 700 }}>📋 Pending Limit Orders</p>
+              <span style={{ background: 'rgba(21,101,192,0.1)', color: '#1565C0', border: '1px solid rgba(21,101,192,0.3)', fontSize: 9, fontWeight: 700, padding: '2px 7px', borderRadius: 6 }}>
+                {limitOrders.length} active
+              </span>
+            </div>
+            {limitOrders.map((order) => {
+              const currentP = quote?.c && selectedStock?.displaySymbol === order.symbol
+                ? quote.c
+                : (order.current_price ?? order.trigger_price)
+              const pctAway  = currentP > 0 ? Math.abs(((order.trigger_price - currentP) / currentP) * 100).toFixed(2) : '—'
+              const isBelow  = order.trigger_price < currentP
+              return (
+                <div key={order.id} style={{ background: t.bgCard, border: '1px solid rgba(21,101,192,0.25)', borderLeft: '3px solid #1565C0', borderRadius: 12, padding: '12px 14px', marginBottom: 8, boxShadow: '0 1px 4px rgba(21,101,192,0.08)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                        <p style={{ color: C.dark, fontSize: 12, fontWeight: 700 }}>{order.symbol}</p>
+                        <span style={{ background: 'rgba(21,101,192,0.1)', color: '#1565C0', border: '1px solid rgba(21,101,192,0.3)', fontSize: 8, fontWeight: 700, padding: '2px 6px', borderRadius: 20 }}>
+                          LIMIT BUY
+                        </span>
+                      </div>
+                      <p style={{ color: C.muted, fontSize: 9 }}>
+                        Buy {order.quantity} shares @ {fmtINR(order.trigger_price)}
+                      </p>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <p style={{ color: '#1565C0', fontSize: 12, fontWeight: 700 }}>{fmtINR(order.trigger_price)}</p>
+                      <p style={{ color: isBelow ? C.green : '#FF9800', fontSize: 9 }}>
+                        {isBelow ? '↓' : '↑'} {pctAway}% {isBelow ? 'below' : 'above'} now
+                      </p>
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '6px 8px', background: t.bgHover, borderRadius: 8, marginBottom: 8 }}>
+                    <span style={{ color: C.muted, fontSize: 10 }}>Reserved: {fmtINR(order.trigger_price * order.quantity)}</span>
+                    <span style={{ color: C.muted, fontSize: 9 }}>Current: {fmtINR(currentP)}</span>
+                  </div>
+                  <button
+                    onClick={() => cancelLimitOrder(order)}
+                    style={{ width: '100%', padding: '7px', borderRadius: 8, border: '1px solid rgba(244,67,54,0.4)', background: 'rgba(244,67,54,0.06)', color: '#F44336', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans',sans-serif" }}
+                  >
+                    ✕ Cancel Order & Refund
+                  </button>
                 </div>
               )
             })}
@@ -1662,9 +2230,17 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
       <div style={{ position: 'fixed', bottom: 56, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, display: 'flex', zIndex: 90, boxShadow: '0 -2px 16px rgba(0,0,0,0.1)' }}>
         <button
           onClick={() => { setTradeMode('BUY'); setShowModal(true) }}
-          disabled={!quote?.c}
-          style={{ flex: 1, height: 56, background: quote?.c ? 'linear-gradient(135deg,#4CAF50,#43A047)' : '#A5D6A7', color: '#fff', border: 'none', fontSize: 14, fontWeight: 800, cursor: quote?.c ? 'pointer' : 'not-allowed', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
-          ↗ BUY {quote?.c ? fmtINR(quote.c) : ''}
+          disabled={!quote?.c || (tradeType === 'intraday' && !marketStatus.isOpen)}
+          style={{ flex: 1, height: 56,
+            background: (!quote?.c || (tradeType === 'intraday' && !marketStatus.isOpen))
+              ? (tradeType === 'intraday' ? '#FFCC80' : '#A5D6A7')
+              : tradeType === 'intraday'
+                ? 'linear-gradient(135deg,#E65100,#BF360C)'
+                : 'linear-gradient(135deg,#4CAF50,#43A047)',
+            color: '#fff', border: 'none', fontSize: 13, fontWeight: 800,
+            cursor: (!quote?.c || (tradeType === 'intraday' && !marketStatus.isOpen)) ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontFamily: "'Plus Jakarta Sans',sans-serif" }}>
+          {tradeType === 'intraday' ? '⚡ BUY Intraday' : '↗ BUY Delivery'} {quote?.c ? fmtINR(quote.c) : ''}
         </button>
         <div style={{ width: 1, background: 'rgba(255,255,255,0.3)', flexShrink: 0 }} />
         <button
@@ -1676,12 +2252,12 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
       </div>
 
       {/* ── BOTTOM NAV ──────────────────────────────────────────────────────────── */}
-      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: '#FFFFFF', borderTop: '1px solid #EBF5EB', padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
+      <div style={{ position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)', width: '100%', maxWidth: 430, background: t.navBg, borderTop: `1px solid ${t.navBorder}`, padding: '10px 0 6px', display: 'flex', justifyContent: 'space-around', zIndex: 100, boxShadow: '0 -2px 12px rgba(0,0,0,0.04)' }}>
         <NavItem icon={Home}          label="Home"      onClick={() => navigate('/home')}      />
         <NavItem icon={TrendingUp}    label="Trade"     active                                 />
         <button onClick={() => navigate('/simulator')} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', background: 'none', border: 'none', padding: '0 8px' }}>
-          <TrophyIcon size={22} color="#AAAAAA" />
-          <span style={{ color: '#AAAAAA', fontSize: 9, fontWeight: 500 }}>League</span>
+          <TrophyIcon size={22} color={t.textHint} />
+          <span style={{ color: t.textHint, fontSize: 9, fontWeight: 500 }}>League</span>
         </button>
         <NavItem icon={MessageCircle} label="AI Mentor" onClick={() => navigate('/ai-mentor')} />
         <NavItem icon={User}          label="Profile"   onClick={() => navigate('/profile')}   />
@@ -1698,6 +2274,7 @@ Provide 5 short bullet points covering: trend, support, resistance, RSI estimate
         onConfirm={qty => { setQuantity(qty); tradeMode === 'BUY' ? handleBuy(qty) : handleSell(qty) }}
         onClose={() => setShowModal(false)}
         isTrading={isTrading}
+        onPlaceLimitOrder={placeLimitOrder}
       />
     </div>
   )
